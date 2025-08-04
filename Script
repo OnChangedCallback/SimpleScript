@@ -3,9 +3,10 @@ loadstring(game:HttpGet('https://pastebin.com/raw/gimbTwW1'))()
 -----------------------
 local V = {
     -- Libraries
-    Lib = loadstring(game:HttpGet('https://raw.githubusercontent.com/xzcReasd/scripts/refs/heads/main/asdasasd'))(),
-    Theme = loadstring(game:HttpGet('https://raw.githubusercontent.com/xzcReasd/scripts/refs/heads/main/ThemeManager'))(),
-    Save = loadstring(game:HttpGet('https://raw.githubusercontent.com/xzcReasd/scripts/refs/heads/main/SaveManager'))(),
+    Lib = loadstring(game:HttpGet('https://raw.githubusercontent.com/OnChangedCallback/SimpleScript/refs/heads/main/lib'))(),
+    Theme = loadstring(game:HttpGet('https://raw.githubusercontent.com/OnChangedCallback/SimpleScript/refs/heads/main/Themes'))(),
+    Save = loadstring(game:HttpGet('https://raw.githubusercontent.com/OnChangedCallback/SimpleScript/refs/heads/main/SAves'))(),
+    
     
     -- Services
     Players = game:GetService("Players"),
@@ -906,6 +907,15 @@ local function PerformStomp()
 end
 
 local function ApplyAutoStomp()
+    -- Если Hide включен, не запускаем AutoStomp (конфликт систем)
+    if Config.Hide and Config.Hide.Enabled then
+        if AutoStompState.active then
+            AutoStompState.active = false
+            ResetAutoStompCamera()
+        end
+        return
+    end
+    
     -- Если игрок двигается сам, отключаем AutoStomp чтобы не мешать управлению
     local lhumMove = V.LP.Character and V.LP.Character:FindFirstChildOfClass("Humanoid") and V.LP.Character:FindFirstChildOfClass("Humanoid").MoveDirection
     if lhumMove and lhumMove.Magnitude > 0.1 then
@@ -999,6 +1009,10 @@ end
 local ShootAtPlayer = function() end
 
 local function StartMagicBullets()
+    -- При активации MagicBullets останавливаем Hide, т.к. большая дистанция мешает стрельбе
+    if Config.Hide and Config.Hide.Enabled and V.HideConnection then
+        DisableHide(); V.HideWasPausedByMB = true
+    end
     if V.MagicBulletConnection then return end
     V.MagicBulletConnection = V.RS.Heartbeat:Connect(function()
         if not (Config.Aimbot.MagicBullets and V.Target and V.Target.player) then return end
@@ -1018,6 +1032,11 @@ local function StartMagicBullets()
 end
 
 local function StopMagicBullets()
+    -- При остановке MagicBullets возвращаем Hide, если мы его приостанавливали
+    if V.HideWasPausedByMB then
+        V.HideWasPausedByMB = nil
+        if Config.Hide and Config.Hide.Enabled then EnableHide() end
+    end
     if V.MagicBulletConnection then
         V.MagicBulletConnection:Disconnect()
         V.MagicBulletConnection = nil
@@ -2174,7 +2193,7 @@ V.RS.RenderStepped:Connect(function()
     if Config.Aimbot.TargetMode == 'Nuker' and GetClosestPlayerToCursor() and (not V.Target or V.Target.player ~= GetClosestPlayerToCursor()) then
         UpdateTarget(GetClosestPlayerToCursor())
     end
-    UpdateTargetHighlight(); UpdateCSyncVisualization(); UpdateViewTarget(); ApplyAutoStomp(); UpdateBulletTracers()
+    UpdateTargetHighlight(); UpdateCSyncVisualization(); UpdateViewTarget(); if Config.Aimbot.AutoStompEnabled and ApplyAutoStomp then ApplyAutoStomp() end; UpdateBulletTracers()
     
     if Config.BulletTracers.Enabled then
         for _, child in pairs(V.WS.Ignored:GetChildren()) do
@@ -2189,11 +2208,15 @@ V.UIS.InputBegan:Connect(OnInputBegan)
 
 -- SpeedHack respawn support
 V.LP.CharacterAdded:Connect(function(char)
-    if Config.SpeedHack.Enabled then
+    if not Config.SpeedHack then Config.SpeedHack = {Enabled=false} end
+    if not Config.FlyHack then Config.FlyHack = {Enabled=false,Active=false} end
+    if not Config.Chams then Config.Chams = {Enabled=false,Color=Color3.new(1,1,1),FillTransparency=0.5} end
+
+    if Config.SpeedHack and Config.SpeedHack.Enabled then
         UpdateSpeedHack(char)
     end
     -- FlyHack respawn support
-    if Config.FlyHack.Enabled and Config.FlyHack.Active then
+    if Config.FlyHack and Config.FlyHack.Enabled and Config.FlyHack.Active then
         UpdateFlyHack(char)
     end
 end)
@@ -2341,34 +2364,21 @@ local function CreateChamHighlight(character)
     return h
 end
 
-local function AddChamForPlayer(player)
-    if not Config.Chams.Enabled then return end
-    if V.ChamsHighlights[player] then return end
-    if not player.Character then return end
-    local hum = player.Character:FindFirstChildOfClass("Humanoid")
-    if not hum or hum.RigType ~= Enum.HumanoidRigType.R15 then return end
-    V.ChamsHighlights[player] = CreateChamHighlight(player.Character)
-    player.CharacterAdded:Connect(function(char)
-        if V.ChamsHighlights[player] then V.ChamsHighlights[player]:Destroy(); V.ChamsHighlights[player] = nil end
+local function AddLocalCham()
+    local plr = V.LP
+    if V.ChamsHighlights[plr] then return end
+    if not plr.Character then return end
+    V.ChamsHighlights[plr] = CreateChamHighlight(plr.Character)
+    plr.CharacterAdded:Connect(function(char)
+        if V.ChamsHighlights[plr] then V.ChamsHighlights[plr]:Destroy(); V.ChamsHighlights[plr] = nil end
         if Config.Chams.Enabled then
-            local hhum = char:FindFirstChildOfClass("Humanoid")
-            if hhum and hhum.RigType == Enum.HumanoidRigType.R15 then
-                V.ChamsHighlights[player] = CreateChamHighlight(char)
-            end
+            V.ChamsHighlights[plr] = CreateChamHighlight(char)
         end
     end)
 end
 
 local function EnableChams()
-    for _, plr in ipairs(V.Players:GetPlayers()) do
-        AddChamForPlayer(plr)
-    end
-    if not V.ChamsPlayerAddedConn then
-        V.ChamsPlayerAddedConn = V.Players.PlayerAdded:Connect(function(p)
-            p.CharacterAdded:Wait()
-            AddChamForPlayer(p)
-        end)
-    end
+    AddLocalCham()
 end
 
 local function DisableChams()
@@ -2376,16 +2386,11 @@ local function DisableChams()
         if h then h:Destroy() end
         V.ChamsHighlights[p] = nil
     end
-    if V.ChamsPlayerAddedConn then V.ChamsPlayerAddedConn:Disconnect(); V.ChamsPlayerAddedConn = nil end
 end
 
-local function UpdateChamsVisuals()
+local function UpdateChamsVisual()
     for _, h in pairs(V.ChamsHighlights) do
-        if h then
-            h.FillColor = Config.Chams.Color
-            h.FillTransparency = Config.Chams.FillTransparency
-            h.OutlineTransparency = 1
-        end
+        if h then h.FillColor = Config.Chams.Color; h.FillTransparency = Config.Chams.FillTransparency end
     end
 end
 
@@ -2400,13 +2405,26 @@ local ChamsToggle = ChamsBox:AddToggle('ChamsEnabled', {
     end
 })
 
-ChamsBox:AddLabel('Color'):AddColorPicker('ChamsColor', {
+ChamsToggle:AddColorPicker('ChamsColor', {
     Default = Config.Chams.Color,
-    Title = 'Chams Color',
-    Transparency = 0,
+    Title = 'Color',
+    Transparency = false,
     Callback = function(c)
         Config.Chams.Color = c
-        UpdateChamsVisuals()
+        UpdateChamsVisual()
+    end
+})
+
+ChamsBox:AddSlider('ChamsFillTrans', {
+    Text = 'Fill Transparency',
+    Default = Config.Chams.FillTransparency,
+    Min = 0,
+    Max = 1,
+    Rounding = 2,
+    Compact = true,
+    Callback = function(v)
+        Config.Chams.FillTransparency = v
+        UpdateChamsVisual()
     end
 })
 
