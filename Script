@@ -1,0 +1,2421 @@
+loadstring(game:HttpGet('https://pastebin.com/raw/gimbTwW1'))()
+-- VARIABLES & SERVICES
+-----------------------
+local V = {
+    -- Libraries
+    Lib = loadstring(game:HttpGet('https://raw.githubusercontent.com/xzcReasd/scripts/refs/heads/main/asdasasd'))(),
+    Theme = loadstring(game:HttpGet('https://raw.githubusercontent.com/xzcReasd/scripts/refs/heads/main/ThemeManager'))(),
+    Save = loadstring(game:HttpGet('https://raw.githubusercontent.com/xzcReasd/scripts/refs/heads/main/SaveManager'))(),
+    
+    -- Services
+    Players = game:GetService("Players"),
+    UIS = game:GetService("UserInputService"),
+    RS = game:GetService("RunService"),
+    WS = workspace,
+    RSStorage = game:GetService("ReplicatedStorage"),
+    
+    -- Objects
+    LP = game:GetService("Players").LocalPlayer,
+    Cam = workspace.CurrentCamera,
+    ReplicatedStorage = game:GetService("ReplicatedStorage"),
+    
+    -- Math/Utility
+    V2 = Vector2.new,
+    V3 = Vector3.new,
+    CF = CFrame.new,
+    math = math,
+    
+    -- Current target
+    Target = nil,
+    
+    -- Highlight
+    CurrentHighlight = nil,
+    
+    -- Aimbot prediction
+    LastPosition = nil,
+    LastUpdateTime = nil,
+    
+    -- CSync
+    CSyncConnection = nil,
+    SavedDesync = nil,
+    StrafeCFrame = nil,
+    CSyncHookActive = false,
+    CSyncVisualization = nil,
+    ViewConnection = nil,
+    MagicBulletConnection = nil,
+    LastMagicShoot = 0,
+    
+    -- BulletTracers
+    BulletTracerConnection = nil,
+    ActiveTracers = {},
+    
+    -- Hide (Desync)
+    HideConnection = nil,
+    OriginalCFrame = nil,
+    VoidPosition = nil,
+    RandomRadius = 1e5,
+    HideHook = nil,
+    
+    -- GunExploit
+    GunExploitActive = false,
+    CurrentWeapon = nil,
+    MainEvent = nil,
+    GunExploitConnection = nil,
+    GunExploitAddedConn = nil,
+    GunExploitRemovedConn = nil,
+    CharacterAddedConnection = nil,
+    RapidFireConnection = nil,
+    AutoReloadConnection = nil,
+    
+    -- AntiStomp
+    AntiStompConnection = nil,
+    
+    -- SpeedHack
+    SpeedHackConnection = nil,
+    
+    -- FlyHack
+    FlyHackConnection = nil,
+    ChamsHighlights = {},
+    ChamsPlayerAddedConn = nil,
+    MainLoopConnection = nil,
+    
+    LastReload = 0
+}
+
+-- FOLLOW PART INIT (камера всегда следует за FollowPart)
+
+
+-- Setup libraries
+V.Theme:SetLibrary(V.Lib)
+V.Save:SetLibrary(V.Lib)
+
+-- Create window
+local Win = V.Lib:CreateWindow({
+    Title = 'SimpleBot | Really simple | ' .. os.date('%d.%m.%Y'),
+    Themeable = true,
+    Info = 'SimpleBot',
+    Center = true,
+    AutoShow = true
+})
+
+-- Create tabs
+local Tabs = {
+    Aimbot = Win:AddTab('Aimbot'),
+    Misc = Win:AddTab('Misc'),
+    Player = Win:AddTab('Player'),
+    Visuals = Win:AddTab('Visuals'),
+    Config = Win:AddTab('Config')
+}
+
+-----------------------
+-- CONFIG
+-----------------------
+local Config = {
+    Aimbot = {
+        Enabled = true,
+        StickyKey = Enum.KeyCode.Q,
+        SkipCovered = false,
+        SkipKnocked = false,
+        SkipGrabbed = false,
+        ResetKnocked = false,
+        ResetGrabbed = false,
+        ResetDeath = false,
+        -- Aimbot Settings
+        AimbotEnabled = false,
+        Prediction = 0.1,
+        ResolverMode = 'None',
+        SelectedPart = 'HumanoidRootPart',
+        TargetMode = 'Sticky',
+        CSyncEnabled = false,
+    CSyncRange = 10,
+    CSyncHeight = 5,
+    CSyncVisualize = false,
+    CSyncVisualizeColor = Color3.new(1, 1, 1),
+    MagicBullets = false,
+        ViewTarget = false,
+        AutoStompEnabled = false, -- новый автостомп
+        DelayBeforeStomp = 0.25,
+        StompInterval = 0.4,
+        
+        -- GunExploit Settings
+        GunExploitEnabled = false,
+        
+        YOffset = 2
+    },
+    TargetHighlight = {
+        Enabled = false,
+        OutlineColor = Color3.new(1, 0, 0),
+        FillColor = Color3.new(1, 0, 0),
+        OutlineTransparency = 0,
+        FillTransparency = 0.5
+    },
+    Chams = {
+        Enabled = false,
+        Color = Color3.new(1,1,1),
+        FillTransparency = 0.5
+    },
+    
+    BulletTracers = {
+        Enabled = false,
+        Mode = "Drawing", -- Drawing или Texture
+        Color = Color3.new(1, 1, 1),
+        Thickness = 2,
+        Duration = 0.6
+    },
+    AntiStomp = {
+        Enabled = false,
+        Method = "Nil_Char",
+        EnableOnHealth = 99
+    },
+
+    FlyHack = {
+        Enabled = false,
+        Active = false,
+        Speed = 1,
+        Key = Enum.KeyCode.F
+    },
+    
+    Hide = {
+        Enabled = false,
+        Mode = "Original"
+    }
+}
+
+-----------------------
+-- UTILITY FUNCTIONS
+-----------------------
+
+local function IsVisible(targetRoot)
+    if not Config.Aimbot.SkipCovered then return true end
+    
+    return V.WS:Raycast(V.Cam.CFrame.Position, (targetRoot.Position - V.Cam.CFrame.Position), (function()
+        local params = RaycastParams.new()
+        params.FilterDescendantsInstances = {V.LP.Character, targetRoot.Parent}
+        params.FilterType = Enum.RaycastFilterType.Blacklist
+        return params
+    end)()) == nil
+end
+
+local function IsPlayerKO(player)
+    return player and player.Character and player.Character:FindFirstChild("BodyEffects") and 
+           player.Character.BodyEffects:FindFirstChild("K.O") and player.Character.BodyEffects["K.O"].Value
+end
+
+local function IsPlayerGrabbed(player)
+    return player and player.Character and player.Character:FindFirstChild("BodyEffects") and 
+           player.Character.BodyEffects:FindFirstChild("Grabbed") and player.Character.BodyEffects.Grabbed.Value
+end
+
+local function GetClosestPlayerToCursor()
+    local closestPlayer, shortestDistance = nil, V.math.huge
+
+    for _, player in ipairs(V.Players:GetPlayers()) do
+        if player ~= V.LP and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local screenPoint, onScreen = V.Cam:WorldToViewportPoint(player.Character.HumanoidRootPart.Position)
+            if onScreen then
+                local distance = (V.V2(screenPoint.X, screenPoint.Y) - V.V2(V.UIS:GetMouseLocation().X, V.UIS:GetMouseLocation().Y)).Magnitude
+                if (not Config.Aimbot.SkipCovered or IsVisible(player.Character.HumanoidRootPart))
+                    and (not Config.Aimbot.SkipKnocked or not IsPlayerKO(player))
+                    and (not Config.Aimbot.SkipGrabbed or not IsPlayerGrabbed(player))
+                    and distance < shortestDistance then
+                    shortestDistance, closestPlayer = distance, player
+                end
+            end
+        end
+    end
+    return closestPlayer
+end
+
+-----------------------
+-- TARGET HIGHLIGHT FUNCTIONS
+-----------------------
+
+local function CreateTargetHighlight(character)
+    if not character then return nil end
+    
+    local highlight = Instance.new('Highlight')
+    highlight.Parent = character
+    highlight.OutlineColor = Config.TargetHighlight.OutlineColor
+    highlight.FillColor = Config.TargetHighlight.FillColor
+    highlight.OutlineTransparency = Config.TargetHighlight.OutlineTransparency
+    highlight.FillTransparency = Config.TargetHighlight.FillTransparency
+    highlight.Adornee = character
+    
+    return highlight
+end
+
+local function UpdateViewTarget()
+    if not Config.Aimbot.ViewTarget or not V.Target or not V.Target.character then
+        if (V.LP.Character and V.LP.Character:FindFirstChildOfClass("Humanoid")) and (not V.Cam.CameraSubject or V.Cam.CameraSubject ~= (V.LP.Character and V.LP.Character:FindFirstChildOfClass("Humanoid"))) then
+            V.Cam.CameraSubject = V.LP.Character:FindFirstChildOfClass("Humanoid")
+        end
+        return
+    end
+
+    if not (V.Target.character:FindFirstChildOfClass("Humanoid")) or (V.Target.character:FindFirstChildOfClass("Humanoid")).Health <= 0 or not (V.Target.character:FindFirstChildOfClass("Humanoid")).Parent then
+        Config.Aimbot.ViewTarget = false
+        if V.LP.Character and V.LP.Character:FindFirstChildOfClass("Humanoid") then
+            V.Cam.CameraSubject = V.LP.Character:FindFirstChildOfClass("Humanoid")
+        end
+        return
+    end
+
+    if V.Cam.CameraSubject ~= V.Target.character:FindFirstChildOfClass("Humanoid") then
+        V.Cam.CameraSubject = V.Target.character:FindFirstChildOfClass("Humanoid")
+    end
+end
+
+local function UpdateTargetHighlight()
+    if not Config.TargetHighlight.Enabled then
+        if V.CurrentHighlight then
+            V.CurrentHighlight:Destroy()
+            V.CurrentHighlight = nil
+        end
+        return
+    end
+    
+    if V.Target and V.Target.character then
+        -- Если хайлайт уже существует, обновляем его параметры
+        if V.CurrentHighlight and V.CurrentHighlight.Parent == V.Target.character then
+            V.CurrentHighlight.OutlineColor = Config.TargetHighlight.OutlineColor
+            V.CurrentHighlight.FillColor = Config.TargetHighlight.FillColor
+            V.CurrentHighlight.OutlineTransparency = Config.TargetHighlight.OutlineTransparency
+            V.CurrentHighlight.FillTransparency = Config.TargetHighlight.FillTransparency
+        else
+            -- Удаляем старый хайлайт если он есть
+            if V.CurrentHighlight then
+                V.CurrentHighlight:Destroy()
+            end
+            -- Создаем новый хайлайт для новой цели
+            V.CurrentHighlight = CreateTargetHighlight(V.Target.character)
+        end
+    else
+        -- Нет цели - удаляем хайлайт
+        if V.CurrentHighlight then
+            V.CurrentHighlight:Destroy()
+            V.CurrentHighlight = nil
+        end
+    end
+end
+
+-----------------------
+-- GUNEXPLOIT FUNCTIONS
+-----------------------
+
+local function EquipRevolver()
+    V.CurrentWeapon = (function()
+        local w = V.LP.Character and V.LP.Character:FindFirstChild("[Revolver]")
+        if w then return w end
+        w = V.LP.Backpack and V.LP.Backpack:FindFirstChild("[Revolver]")
+        return w and (function() w.Parent = V.LP.Character; return w end)() or nil
+    end)()
+    return V.CurrentWeapon ~= nil
+end
+
+local function SetupRapidFire()
+    if V.RapidFireConnection then V.RapidFireConnection:Disconnect() end
+    local lastRapidFireUpdate = 0
+    
+    V.RapidFireConnection = V.RS.Heartbeat:Connect(function()
+        -- Увеличиваем интервал проверки до 20 раз в секунду (каждые 0.05 сек)
+        local now = os.clock()
+        if now - lastRapidFireUpdate < 0.05 then return end
+        lastRapidFireUpdate = now
+        
+        -- Проверяем оружие только если оно изменилось
+        local tool = V.LP.Character and V.LP.Character:FindFirstChildOfClass("Tool")
+        if not tool or not tool:FindFirstChild("GunScript") then return end
+        
+        -- Оптимизированный rapid fire с проверкой на ошибки
+        pcall(function()
+            for _, conn in ipairs(getconnections(tool.Activated)) do
+                if conn and conn.Function then
+                    -- Кэшируем функцию, чтобы не вызывать getinfo лишний раз
+                    local func = conn.Function
+                    for i = 1, debug.info(func, 'u') do
+                        -- Проверяем только числовые upvalues
+                        local name, value = debug.getupvalue(func, i)
+                        if type(value) == "number" and name and name:lower():find("delay") then
+                            debug.setupvalue(func, i, 0.000001)
+                        end
+                    end
+                end
+            end
+        end)
+    end)
+end
+
+local function SetupAutoReload()
+    if V.AutoReloadConnection then V.AutoReloadConnection:Disconnect() end
+    local lastCheck = 0
+    V.AutoReloadConnection = V.RS.Heartbeat:Connect(function()
+        -- Ограничиваем проверки до 10 раз в секунду (каждые 0.1 сек)
+        local now = os.clock()
+        if now - lastCheck < 0.1 then return end
+        lastCheck = now
+        
+        -- Проверяем только если у нас есть оружие в руках
+        local tool = V.LP.Character and V.LP.Character:FindFirstChildWhichIsA("Tool")
+        if not tool or not tool:FindFirstChild("Ammo") then return end
+        
+        -- Проверяем патроны только если прошло больше 1 секунды с последней перезарядки
+        if tool.Ammo.Value > 0 then return end
+        if now - V.LastReload < 1 then return end
+        
+        V.LastReload = now
+        -- Меняем слот, чтобы перезарядить оружие
+        V.ReplicatedStorage.MainEvent:FireServer("ChangeLoadout", "[Knife]", "Slot3")
+    end)
+end
+
+local function SetupCharacterMonitoring(character)
+    -- Отключаем старые соединения, если они есть
+    if V.GunExploitAddedConn then V.GunExploitAddedConn:Disconnect() end
+    if V.GunExploitRemovedConn then V.GunExploitRemovedConn:Disconnect() end
+    
+    -- Мониторинг добавления оружия
+    V.GunExploitAddedConn = character.ChildAdded:Connect(function(child)
+        if not V.GunExploitActive then return end
+        -- Проверяем только инструменты с GunScript
+        if child:IsA("Tool") and child:FindFirstChild("GunScript") then
+            V.CurrentWeapon = child
+            -- Запускаем rapid fire и авто-перезарядку только после успешного экипирования
+            SetupRapidFire()
+            SetupAutoReload()
+        end
+    end)
+    
+    -- Мониторинг удаления оружия
+    V.GunExploitRemovedConn = character.ChildRemoved:Connect(function(child)
+        if not V.GunExploitActive then return end
+        if child == V.CurrentWeapon then
+            -- Отключаем rapid fire при потере оружия
+            if V.RapidFireConnection then 
+                V.RapidFireConnection:Disconnect() 
+                V.RapidFireConnection = nil 
+            end
+            V.CurrentWeapon = nil
+            
+            -- Пробуем переэкипировать с задержкой
+            delay(0.2, function()
+                if V.GunExploitActive and V.LP.Character then
+                    EquipRevolver()
+                end
+            end)
+        end
+    end)
+end
+
+local function StartGunExploit()
+    if V.GunExploitActive then return end
+    V.GunExploitActive = true
+    
+    -- Обработчик респавна персонажа
+    if not V.CharacterAddedConnection then
+        V.CharacterAddedConnection = V.LP.CharacterAdded:Connect(function(character)
+            if not V.GunExploitActive then return end
+            -- Даем время на загрузку персонажа
+            delay(0.5, function()
+                if V.GunExploitActive then
+                    SetupCharacterMonitoring(character)
+                    EquipRevolver()
+                end
+            end)
+        end)
+    end
+    
+    -- Инициализация для текущего персонажа
+    if V.LP.Character then
+        SetupCharacterMonitoring(V.LP.Character)
+        EquipRevolver()
+    end
+end
+
+local function StopGunExploit()
+    V.GunExploitActive = false
+    
+    -- Disconnect connections
+    if V.RapidFireConnection then
+        V.RapidFireConnection:Disconnect()
+        V.RapidFireConnection = nil
+    end
+    
+    if V.AutoReloadConnection then
+        V.AutoReloadConnection:Disconnect()
+        V.AutoReloadConnection = nil
+    end
+
+    -- Отключаем все соединения
+    if V.GunExploitAddedConn then V.GunExploitAddedConn:Disconnect(); V.GunExploitAddedConn = nil end
+    if V.GunExploitRemovedConn then V.GunExploitRemovedConn:Disconnect(); V.GunExploitRemovedConn = nil end
+    if V.CharacterAddedConnection then V.CharacterAddedConnection:Disconnect(); V.CharacterAddedConnection = nil end
+    
+    -- Remove weapon from hands
+    if V.CurrentWeapon and V.CurrentWeapon.Parent == V.LP.Character then
+        V.CurrentWeapon.Parent = V.LP.Backpack
+    end
+    V.CurrentWeapon = nil
+end
+
+-----------------------
+-- BULLET TRACERS SYSTEM
+-----------------------
+
+local function CreateDrawingTracer(startPos, endPos)
+    table.insert(V.ActiveTracers, {
+        type = "Drawing",
+        line = (function()
+            local l = Drawing.new("Line")
+            l.Color, l.Thickness, l.Transparency, l.Visible = Config.BulletTracers.Color, Config.BulletTracers.Thickness, 1, true
+            return l
+        end)(),
+        circle = (function()
+            local c = Drawing.new("Circle")
+            c.Color, c.Thickness, c.Radius, c.Filled, c.Transparency, c.Visible = Config.BulletTracers.Color, Config.BulletTracers.Thickness, 4, false, 1, true
+            return c
+        end)(),
+        startPos = startPos,
+        endPos = endPos,
+        startTime = tick(),
+        duration = Config.BulletTracers.Duration
+    })
+end
+
+local function CreateBeamTracer(startPos, endPos)
+    -- Создаем невидимую основную часть
+    local mainPart = Instance.new("Part")
+    mainPart.Name = "BulletTracer"
+    mainPart.Parent = V.WS
+    mainPart.Size = Vector3.new(0, 0, 0)
+    mainPart.Massless = true
+    mainPart.Transparency = 1
+    mainPart.CanCollide = false
+    mainPart.Position = startPos
+    mainPart.Anchored = true
+
+    -- Создаем две точки для луча
+    local part0 = Instance.new("Part")
+    part0.Parent = mainPart
+    part0.Size = Vector3.new(0, 0, 0)
+    part0.Massless = true
+    part0.Transparency = 1
+    part0.CanCollide = false
+    part0.Position = startPos
+    part0.Anchored = true
+
+    local part1 = Instance.new("Part")
+    part1.Parent = mainPart
+    part1.Size = Vector3.new(0, 0, 0)
+    part1.Massless = true
+    part1.Transparency = 1
+    part1.CanCollide = false
+    part1.Position = endPos
+    part1.Anchored = true
+
+    -- Создаем точки крепления для луча
+    local attachment0 = Instance.new("Attachment")
+    attachment0.Parent = part0
+
+    local attachment1 = Instance.new("Attachment")
+    attachment1.Parent = part1
+
+    -- Создаем сам луч
+    local beam = Instance.new("Beam")
+    beam.Texture = "rbxassetid://7216850022"
+    beam.TextureMode = Enum.TextureMode.Wrap
+    beam.TextureLength = 10
+    beam.LightEmission = 1
+    beam.LightInfluence = 1
+    beam.FaceCamera = true
+    beam.ZOffset = -1
+    beam.Width0 = Config.BulletTracers.Thickness
+    beam.Width1 = Config.BulletTracers.Thickness
+    beam.Transparency = NumberSequence.new(0)
+    beam.Color = ColorSequence.new(Config.BulletTracers.Color)
+    beam.Attachment0 = attachment0
+    beam.Attachment1 = attachment1
+    beam.Enabled = true
+    beam.Parent = mainPart
+
+    table.insert(V.ActiveTracers, {
+        type = "Beam",
+        mainPart = mainPart,
+        beam = beam,
+        startTime = tick(),
+        duration = Config.BulletTracers.Duration
+    })
+end
+
+local function CreateTracer(startPos, endPos)
+    if not Config.BulletTracers.Enabled then return end
+    
+    if Config.BulletTracers.Mode == "Drawing" then
+        CreateDrawingTracer(startPos, endPos)
+    elseif Config.BulletTracers.Mode == "Texture" then
+        CreateBeamTracer(startPos, endPos)
+    end
+end
+
+local function UpdateBulletTracers()
+    if not Config.BulletTracers.Enabled or not V.ActiveTracers then return end
+    
+    for i = #V.ActiveTracers, 1, -1 do
+        local t = V.ActiveTracers[i]
+        local elapsed = tick() - t.startTime
+        
+        if elapsed >= t.duration then
+            -- Очистка в зависимости от типа
+            if t.type == "Drawing" then
+                t.line:Remove(); if t.circle then t.circle:Remove() end
+            elseif t.type == "Beam" then
+                t.mainPart:Destroy()
+            end
+            table.remove(V.ActiveTracers, i)
+        else
+            if t.type == "Drawing" then
+                local startScreen, startOn = V.Cam:WorldToViewportPoint(t.startPos)
+                local endScreen, endOn = V.Cam:WorldToViewportPoint(t.endPos)
+                
+                if startOn and endOn then
+                    t.line.From, t.line.To, t.line.Visible = V.V2(startScreen.X, startScreen.Y), V.V2(endScreen.X, endScreen.Y), true
+                    if t.circle then t.circle.Position, t.circle.Visible = V.V2(endScreen.X, endScreen.Y), true end
+                    
+                    local alpha = elapsed >= (t.duration - 0.1) and (1 - ((elapsed - (t.duration - 0.1)) / 0.1)) or 1
+                    t.line.Transparency = alpha
+                    if t.circle then t.circle.Transparency = alpha end
+                else
+                    t.line.Visible = false
+                    if t.circle then t.circle.Visible = false end
+                end
+            elseif t.type == "Beam" then
+                -- Эффект затухания для beam
+                local alpha = elapsed >= (t.duration - 0.1) and (1 - ((elapsed - (t.duration - 0.1)) / 0.1)) or 1
+                if t.beam and t.beam.Parent then
+                    t.beam.Transparency = NumberSequence.new(1 - alpha)
+                end
+            end
+        end
+    end
+end
+
+local function InitBulletTracers()
+    if V.BulletTracerConnection then
+        V.BulletTracerConnection:Disconnect()
+    end
+    
+    V.BulletTracerConnection = V.WS.Ignored.ChildAdded:Connect(function(Object)
+        if Object.Name == "BULLET_RAYS" then
+            local ownerCharacterName = Object:GetAttribute("OwnerCharacter")
+            if ownerCharacterName and ownerCharacterName == V.LP.Name then
+                local startPos = Object.CFrame.Position
+                local lookVector = Object.CFrame.LookVector
+
+                local raycastParams = RaycastParams.new()
+                raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+                raycastParams.IgnoreWater = true
+                raycastParams.FilterDescendantsInstances = {V.LP.Character}
+
+                local ray = V.WS:Raycast(startPos, lookVector * 1000, raycastParams)
+                if ray then
+                    CreateTracer(startPos, ray.Position)
+                end
+            end
+        end
+    end)
+end
+
+local function CleanupBulletTracers()
+    if V.BulletTracerConnection then V.BulletTracerConnection:Disconnect(); V.BulletTracerConnection = nil end
+    if V.ActiveTracers then
+        for _, t in pairs(V.ActiveTracers) do
+            if t.type == "Drawing" then
+                t.line:Remove(); if t.circle then t.circle:Remove() end
+            elseif t.type == "Beam" then
+                t.mainPart:Destroy()
+            end
+        end
+        V.ActiveTracers = {}
+    end
+end
+
+-----------------------
+-- AIMBOT PREDICTION & RESOLVER
+-----------------------
+
+
+local function GetPredictedPosition(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") then return nil end
+
+    if not (targetPlayer.Character:FindFirstChild(Config.Aimbot.SelectedPart) or targetPlayer.Character:FindFirstChild("HumanoidRootPart")) then return nil end
+    
+    if not V.LastPosition or not V.LastUpdateTime then
+        V.LastPosition = (targetPlayer.Character:FindFirstChild(Config.Aimbot.SelectedPart) or targetPlayer.Character:FindFirstChild("HumanoidRootPart")).Position
+        V.LastUpdateTime = tick()
+        return V.LastPosition
+    end
+
+    if Config.Aimbot.ResolverMode == "Velocity" then
+        return (targetPlayer.Character:FindFirstChild(Config.Aimbot.SelectedPart) or targetPlayer.Character:FindFirstChild("HumanoidRootPart")).Position + V.V3(
+            (targetPlayer.Character:FindFirstChild(Config.Aimbot.SelectedPart) or targetPlayer.Character:FindFirstChild("HumanoidRootPart")).Velocity.X * Config.Aimbot.Prediction,
+            (targetPlayer.Character:FindFirstChild(Config.Aimbot.SelectedPart) or targetPlayer.Character:FindFirstChild("HumanoidRootPart")).Velocity.Y * Config.Aimbot.Prediction,
+            (targetPlayer.Character:FindFirstChild(Config.Aimbot.SelectedPart) or targetPlayer.Character:FindFirstChild("HumanoidRootPart")).Velocity.Z * Config.Aimbot.Prediction
+        )
+    elseif Config.Aimbot.ResolverMode == "MoveDirection" then
+        return (targetPlayer.Character:FindFirstChild(Config.Aimbot.SelectedPart) or targetPlayer.Character:FindFirstChild("HumanoidRootPart")).Position + (targetPlayer.Character.Humanoid.MoveDirection * (Config.Aimbot.Prediction * 10))
+    elseif Config.Aimbot.ResolverMode == "CalculateCFrame" then
+        if ((targetPlayer.Character:FindFirstChild(Config.Aimbot.SelectedPart) or targetPlayer.Character:FindFirstChild("HumanoidRootPart")).Position - V.LastPosition).Magnitude < 0.001 then
+            return (targetPlayer.Character:FindFirstChild(Config.Aimbot.SelectedPart) or targetPlayer.Character:FindFirstChild("HumanoidRootPart")).Position
+        else
+            V.LastUpdateTime, V.LastPosition = tick(), (targetPlayer.Character:FindFirstChild(Config.Aimbot.SelectedPart) or targetPlayer.Character:FindFirstChild("HumanoidRootPart")).Position
+            return V.LastPosition + (V.LastPosition - V.LastPosition).Unit * ((((V.LastPosition - V.LastPosition).Magnitude) / (tick() - V.LastUpdateTime)) * (0.1 * (Config.Aimbot.Prediction * 10))) + V.V3(0, ((V.LastPosition.Y - V.LastPosition.Y) / (tick() - V.LastUpdateTime) * (0.1 * Config.Aimbot.Prediction)), 0)
+        end
+    end
+    return (targetPlayer.Character:FindFirstChild(Config.Aimbot.SelectedPart) or targetPlayer.Character:FindFirstChild("HumanoidRootPart")).Position
+end
+
+local function Check()
+    return Config.Aimbot.AimbotEnabled and V.Target and V.Target.player and V.Target.character
+end
+
+-----------------------
+-- CSYNC SYSTEM
+-----------------------
+
+local function GetRandomPositionAroundTarget(targetRoot)
+    return targetRoot.Position + V.V3(
+        V.math.random(-(Config.Aimbot.CSyncRange or 10), (Config.Aimbot.CSyncRange or 10)),
+        V.math.random(-(Config.Aimbot.CSyncHeight or 5), (Config.Aimbot.CSyncHeight or 5)),
+        V.math.random(-(Config.Aimbot.CSyncRange or 10), (Config.Aimbot.CSyncRange or 10))
+    )
+end
+
+local function StartCSync()
+    if V.CSyncConnection then
+        V.CSyncConnection:Disconnect()
+        V.CSyncConnection = nil
+    end
+    
+    if not Config.Aimbot.CSyncEnabled or not V.Target or not V.Target.character or (AutoStompState and AutoStompState.blockedTargets and AutoStompState.blockedTargets[V.Target.player]) then
+        return
+    end
+    
+    print('[CSync] Запуск C-Sync')
+    
+    V.CSyncConnection = V.RS.Heartbeat:Connect(function()
+        local clientRoot = V.LP.Character and V.LP.Character:FindFirstChild("HumanoidRootPart")
+        local targetRoot = V.Target and V.Target.character and V.Target.character:FindFirstChild("HumanoidRootPart")
+        
+        if not clientRoot or not targetRoot then
+            return
+        end
+        
+        -- Дополнительная проверка что clientRoot все еще валиден
+        if not clientRoot.Parent then
+            return
+        end
+        
+        -- Сохраняем реальную позицию
+        V.SavedDesync = clientRoot.CFrame
+        
+        -- Генерируем случайную позицию вокруг цели
+        V.StrafeCFrame = GetRandomPositionAroundTarget(targetRoot)
+        
+        -- Проверяем что StrafeCFrame валиден
+        if not V.StrafeCFrame then
+            return
+        end
+        
+        -- Телепорт на стрейф-позицию с проверкой
+        if clientRoot and clientRoot.Parent then
+            clientRoot.CFrame = typeof(V.StrafeCFrame) == "CFrame" and V.StrafeCFrame or V.CF(V.StrafeCFrame)
+        end
+        
+        -- Ожидаем кадр
+        V.RS.RenderStepped:Wait()
+        
+        -- Возвращаемся на реальную позицию с проверкой
+        if clientRoot and clientRoot.Parent and V.SavedDesync then
+            clientRoot.CFrame = V.SavedDesync
+        end
+    end)
+end
+
+local function StopCSync()
+    if V.CSyncConnection then
+        print('[CSync] Остановка C-Sync')
+        V.CSyncConnection:Disconnect()
+        V.CSyncConnection = nil
+    end
+    
+    -- Возвращаем игрока на реальную позицию перед остановкой
+    local clientRoot = V.LP.Character and V.LP.Character:FindFirstChild("HumanoidRootPart")
+    if clientRoot and clientRoot.Parent and V.SavedDesync then
+        clientRoot.CFrame = V.SavedDesync
+        print('[CSync] Позиция игрока восстановлена')
+    end
+    
+    V.SavedDesync = nil
+    V.StrafeCFrame = nil
+end
+
+-- DESYNC TELEPORT HELPER
+local function DesyncTeleport(targetCF)
+    -- Телепорт на сервер (Heartbeat), возврат для клиента (RenderStepped)
+    local root = V.LP.Character and V.LP.Character:FindFirstChild("HumanoidRootPart")
+    if not root or not root.Parent then return end
+    local originalCF = root.CFrame
+
+    -- Создаём одноразовое соединение Heartbeat -> RenderStepped
+    local hbConn; hbConn = V.RS.Heartbeat:Connect(function()
+        hbConn:Disconnect()
+        if not root or not root.Parent then return end
+        root.CFrame = targetCF -- перемещаемся для сервера
+
+        -- После телепорта немедленно возвращаем позицию до рендера кадра
+        local rsConn; rsConn = V.RS.RenderStepped:Connect(function()
+            rsConn:Disconnect()
+            if root and root.Parent then
+                root.CFrame = originalCF -- возвращаем локальному клиенту
+            end
+        end)
+    end)
+end
+
+-- AUTOSTOMP SYSTEM
+-- Состояние AutoStomp
+local AutoStompState = {
+    active = false,
+    
+    lastTime = 0,
+    delayStart = 0,
+    followPart = nil,
+    csyncPaused = false,
+    hidePaused = false, -- Для отслеживания приостановки Hide
+    blockedTargets = {}, -- Таблица для хранения заблокированных целей
+    soundId = "rbxassetid://2783295579",
+    collisionDisabled = false,
+    targetPlayer = nil
+}
+
+-- Функция для проверки, проигрывается ли звук смерти у цели
+local function IsDeathSoundPlaying(character)
+    if not character then return false end
+    
+    -- Проверяем все Sound в модели персонажа
+    for _, child in ipairs(character:GetDescendants()) do
+        if child:IsA("Sound") and child.IsPlaying and child.SoundId == AutoStompState.soundId then
+            return true
+        end
+    end
+    return false
+end
+
+-- Вспомогательная функция для массового включения/выключения коллизии у персонажа
+local function ZeroCharacterVelocity(char)
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.AssemblyLinearVelocity = V.V3(0,0,0)
+            part.AssemblyAngularVelocity = V.V3(0,0,0)
+        end
+    end
+end
+
+-- Вспомогательная функция для массового включения/выключения коллизии у персонажа
+local function SetCharacterCollision(char, state)
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = state
+        end
+    end
+end
+
+local function GetRagdollPart(character)
+    if not character then return nil end
+    for _, partName in ipairs({"UpperTorso","LowerTorso"}) do
+        local part = character:FindFirstChild(partName)
+        if part then return part end
+    end
+    return character:FindFirstChild("HumanoidRootPart")
+end
+
+local function CreateAutoStompFollowPart()
+    if AutoStompState.followPart and AutoStompState.followPart.Parent then AutoStompState.followPart:Destroy() end
+    
+    AutoStompState.followPart = (function()
+        local p = Instance.new("Part")
+        p.Name, p.Anchored, p.CanCollide, p.Size, p.Transparency, p.Parent = "AutoStompFollowPart", true, false, V.V3(0.1,0.1,0.1), 1, V.WS
+        if V.LP.Character and V.LP.Character:FindFirstChild("HumanoidRootPart") then
+            p.CFrame = V.CF((V.LP.Character:FindFirstChild("HumanoidRootPart")).Position + V.V3(0, 1.48, 0))
+        end
+        return p
+    end)()
+    
+    return AutoStompState.followPart
+end
+
+local function ResetAutoStompCamera()
+    -- Очищаем блокировку для несуществующих или живых целей
+    for player, _ in pairs(AutoStompState.blockedTargets) do
+        if not player.Parent or not IsPlayerKO(player) then
+            AutoStompState.blockedTargets[player] = nil
+        end
+    end
+    
+    if AutoStompState.followPart and AutoStompState.followPart.Parent then
+        AutoStompState.followPart:Destroy()
+    end
+    AutoStompState.followPart = nil
+    -- Возвращаем коллизии, если они были отключены
+    if AutoStompState.collisionDisabled then
+        if AutoStompState.targetPlayer and AutoStompState.targetPlayer.Character then
+            SetCharacterCollision(AutoStompState.targetPlayer.Character, true)
+        end
+        AutoStompState.collisionDisabled = nil
+        AutoStompState.targetPlayer = nil
+    end
+    -- Возобновляем CSync, если он был приостановлен
+    if AutoStompState.csyncPaused then
+        AutoStompState.csyncPaused = nil
+        if Config.Aimbot.CSyncEnabled then
+            StartCSync()
+        end
+    end
+    -- Возобновляем Hide, если он был приостановлен
+    if AutoStompState.hidePaused then
+        AutoStompState.hidePaused = nil
+        if Config.Hide.Enabled then
+            StartHide()
+        end
+    end
+    if not Config.Aimbot.CSyncEnabled and not Config.Aimbot.ViewTarget then
+        local lhum = V.LP.Character and V.LP.Character:FindFirstChildOfClass("Humanoid")
+        if lhum then
+            V.Cam.CameraSubject = lhum
+        end
+    end
+end
+
+local function PerformStomp()
+    local mainEvent = V.RSStorage:FindFirstChild("MainEvent")
+    if mainEvent then
+        mainEvent:FireServer("Stomp")
+    end
+    AutoStompState.lastTime = tick()
+end
+
+local function ApplyAutoStomp()
+    -- Если игрок двигается сам, отключаем AutoStomp чтобы не мешать управлению
+    local lhumMove = V.LP.Character and V.LP.Character:FindFirstChildOfClass("Humanoid") and V.LP.Character:FindFirstChildOfClass("Humanoid").MoveDirection
+    if lhumMove and lhumMove.Magnitude > 0.1 then
+        if AutoStompState.active then
+            AutoStompState.active = false
+            ResetAutoStompCamera()
+        end
+        return
+    end
+
+    if not Config.Aimbot.AutoStompEnabled then
+        if AutoStompState.active then
+            AutoStompState.active = false
+            ResetAutoStompCamera()
+        end
+        return
+    end
+    if not V.Target or not V.Target.player then return end
+    local targetPlayer = V.Target.player
+    if not IsPlayerKO(targetPlayer) then
+        if AutoStompState.blockedTargets[targetPlayer] and not IsPlayerKO(targetPlayer) then
+            AutoStompState.blockedTargets[targetPlayer] = nil
+        end
+        return 
+    end
+    local ragdollPart = GetRagdollPart(targetPlayer.Character)
+    if not ragdollPart then return end
+
+    -- Проверяем звук смерти
+    if IsDeathSoundPlaying(targetPlayer.Character) then
+        -- Если звук смерти проигрывается, блокируем AutoStomp для этой цели
+        AutoStompState.blockedTargets[targetPlayer] = true
+        if AutoStompState.active then
+            AutoStompState.active = false
+            ResetAutoStompCamera()
+        end
+        return
+    end
+
+    local hrp = V.LP.Character and V.LP.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    if not AutoStompState.active then
+        -- При старте AutoStomp приостанавливаем CSync, если он активен
+        if Config.Aimbot.CSyncEnabled and V.CSyncConnection then
+            StopCSync()
+            AutoStompState.csyncPaused = true
+        end
+        -- При старте AutoStomp приостанавливаем Hide, если он активен
+        if Config.Hide.Enabled and V.HideConnection then
+            StopHide()
+            AutoStompState.hidePaused = true
+        end
+        AutoStompState.active = true
+        -- Отключаем коллизии только у цели
+        SetCharacterCollision(targetPlayer.Character, false)
+        AutoStompState.collisionDisabled = true
+        AutoStompState.targetPlayer = targetPlayer
+
+        AutoStompState.delayStart = tick()
+        AutoStompState.lastTime = 0
+        CreateAutoStompFollowPart()
+    end
+
+    if tick() - AutoStompState.delayStart < (Config.Aimbot.DelayBeforeStomp or 0.25) then
+        return
+    end
+
+
+    -- Переключаем камеру на скрытую FollowPart, чтобы локально не дёргалось
+    if AutoStompState.followPart then
+        AutoStompState.followPart.CFrame = CFrame.new(hrp.Position + V.V3(0, 1.48, 0))
+        V.Cam.CameraSubject = AutoStompState.followPart
+    end
+
+    -- Выполняем десинхронный телепорт к цели
+    DesyncTeleport(CFrame.new(ragdollPart.Position + V.V3(0, (Config.Aimbot.YOffset or 2), 0)))
+    -- Сброс скоростей, чтобы не флинговать
+    ZeroCharacterVelocity(targetPlayer.Character)
+
+
+
+    if tick() - AutoStompState.lastTime >= (Config.Aimbot.StompInterval or 0.4) then
+        PerformStomp()
+    end
+end
+
+
+
+
+local ShootAtPlayer = function() end
+
+local function StartMagicBullets()
+    if V.MagicBulletConnection then return end
+    V.MagicBulletConnection = V.RS.Heartbeat:Connect(function()
+        if not (Config.Aimbot.MagicBullets and V.Target and V.Target.player) then return end
+
+        -- Цель
+        ShootAtPlayer(V.Target.player)
+
+        -- Если цель захватили – стреляем и по грабберу
+        local grabbedVal = V.Target.player.Character and V.Target.player.Character:FindFirstChild("BodyEffects") and V.Target.player.Character.BodyEffects:FindFirstChild("Grabbed")
+        if grabbedVal and grabbedVal.Value and grabbedVal.Value.Parent then
+            local grabberPlayer = V.Players:GetPlayerFromCharacter(grabbedVal.Value.Parent)
+            if grabberPlayer then
+                ShootAtPlayer(grabberPlayer)
+            end
+        end
+    end)
+end
+
+local function StopMagicBullets()
+    if V.MagicBulletConnection then
+        V.MagicBulletConnection:Disconnect()
+        V.MagicBulletConnection = nil
+    end
+end
+
+local function CreateCSyncVisualization(position)
+    if not Config.Aimbot.CSyncVisualize then return end
+    
+    local e = Instance.new("BillboardGui")
+    e.Name = "CSyncVis"
+    e.Size = UDim2.new(2, 0, 2, 0)
+    e.AlwaysOnTop = true
+    
+    local img3 = Instance.new("ImageLabel", e)
+    img3.Name = "img3"
+    img3.Size = UDim2.new(0.6, 0, 0.6, 0)
+    img3.BackgroundTransparency = 1
+    img3.Image = "rbxassetid://108770683919433"
+    img3.ImageTransparency = 0
+    img3.ImageColor3 = Config.Aimbot.CSyncVisualizeColor
+    
+    local adorneePart = Instance.new("Part")
+    adorneePart.Size = V.V3(0, 0, 0)
+    adorneePart.Anchored = true
+    adorneePart.Transparency = 1
+    adorneePart.CanCollide = false
+    adorneePart.Position = position
+    adorneePart.Parent = V.WS
+    
+    e.Adornee = adorneePart
+    e.Parent = V.WS
+    
+    return {gui = e, part = adorneePart}
+end
+
+local function UpdateCSyncVisualization()
+    if not Config.Aimbot.CSyncVisualize then
+        if V.CSyncVisualization then
+            if V.CSyncVisualization.gui then V.CSyncVisualization.gui:Destroy() end
+            if V.CSyncVisualization.part then V.CSyncVisualization.part:Destroy() end
+            V.CSyncVisualization = nil
+        end
+        return
+    end
+    
+    -- Показываем визуализацию только если CSync активен и есть позиция десинка
+    if not Config.Aimbot.CSyncEnabled or not V.StrafeCFrame then
+        if V.CSyncVisualization then
+            if V.CSyncVisualization.gui then V.CSyncVisualization.gui:Destroy() end
+            if V.CSyncVisualization.part then V.CSyncVisualization.part:Destroy() end
+            V.CSyncVisualization = nil
+        end
+        return
+    end
+    
+    if not V.CSyncVisualization then
+        local position = typeof(V.StrafeCFrame) == "CFrame" and V.StrafeCFrame.Position or V.StrafeCFrame
+        V.CSyncVisualization = CreateCSyncVisualization(position)
+    end
+    
+    if V.CSyncVisualization and V.CSyncVisualization.part then
+        -- Обновляем позицию визуализации на координаты CSync десинка
+        local position = typeof(V.StrafeCFrame) == "CFrame" and V.StrafeCFrame.Position or V.StrafeCFrame
+        V.CSyncVisualization.part.Position = position
+        if V.CSyncVisualization.gui then
+            V.CSyncVisualization.gui.img3.ImageColor3 = Config.Aimbot.CSyncVisualizeColor
+        end
+    end
+end
+
+-----------------------
+-- TARGET SYSTEM
+-----------------------
+
+local function UpdateTarget(target)
+    if not target then
+        V.Target = nil
+        print('[Target] Цель сброшена')
+        -- Останавливаем CSync при сбросе цели
+        if Config.Aimbot.CSyncEnabled then
+            StopCSync()
+        end
+        return
+    end
+    
+    if not target:IsA("Player") or not target.Character then
+        V.Target = { player = target, name = target.Name }
+        return
+    end
+    
+    if not target.Character:FindFirstChild("HumanoidRootPart") or not target.Character:FindFirstChildOfClass("Humanoid") then
+        V.Target = { player = target, character = target.Character, name = target.Name }
+        return
+    end
+    
+    local humanoidRootPart = target.Character:FindFirstChild("HumanoidRootPart")
+    local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
+    local localRoot = V.LP.Character and V.LP.Character:FindFirstChild("HumanoidRootPart")
+    
+    V.Target = {
+        player = target,
+        name = target.Name,
+        displayName = target.DisplayName or target.Name,
+        character = target.Character,
+        humanoid = humanoid,
+        root = humanoidRootPart,
+        r15 = (function()
+            local parts = {}
+            for _, part in ipairs({"Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot", "HumanoidRootPart"}) do
+                local p = target.Character:FindFirstChild(part)
+                if p then parts[part] = p end
+            end
+            return parts
+        end)(),
+        position = humanoidRootPart.Position,
+        cframe = humanoidRootPart.CFrame,
+        velocity = humanoidRootPart.Velocity,
+        walkspeed = humanoid.WalkSpeed,
+        distance = localRoot and (humanoidRootPart.Position - localRoot.Position).Magnitude or 0,
+        health = humanoid.Health,
+        maxHealth = humanoid.MaxHealth,
+        team = target.Team or nil,
+        isAlive = humanoid.Health > 0
+    }
+    
+    print('[Target] Выбрана новая цель:', V.Target.name)
+    
+    -- Автоматически запускаем CSync если он включен
+    if Config.Aimbot.CSyncEnabled then
+        print('[Target] Автозапуск CSync для новой цели')
+        StartCSync()
+    end
+    if Config.Aimbot.MagicBullets then
+        print('[Target] Автозапуск MagicBullets для новой цели')
+        StartMagicBullets()
+    end
+end
+
+-----------------------
+-- SPEEDHACK FUNCTIONS
+-----------------------
+
+
+
+-----------------------
+-- FLYHACK FUNCTIONS
+-----------------------
+
+local function setNoClip(character, state)
+    if not character then return end
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            if state then
+                if not part:GetAttribute("OriginalCollision") then
+                    part:SetAttribute("OriginalCollision", part.CanCollide)
+                    part:SetAttribute("OriginalTouch", part.CanTouch)
+                    part:SetAttribute("OriginalQuery", part.CanQuery)
+                end
+                part.CanCollide, part.CanTouch, part.CanQuery = false, false, false
+            else
+                if part:GetAttribute("OriginalCollision") ~= nil then
+                    part.CanCollide = part:GetAttribute("OriginalCollision")
+                    part.CanTouch = part:GetAttribute("OriginalTouch")
+                    part.CanQuery = part:GetAttribute("OriginalQuery")
+                    part:SetAttribute("OriginalCollision", nil)
+                    part:SetAttribute("OriginalTouch", nil)
+                    part:SetAttribute("OriginalQuery", nil)
+                end
+            end
+        end
+    end
+end
+
+local function UpdateFlyHack(character)
+    if V.FlyHackConnection then V.FlyHackConnection:Disconnect(); V.FlyHackConnection = nil end
+    if not character then return end
+    if not (Config.FlyHack.Enabled and Config.FlyHack.Active) then return end
+
+    setNoClip(character, true)
+    V.FlyHackConnection = V.RS.Stepped:Connect(function()
+        local char = V.LP.Character
+        if not char then return end
+        setNoClip(char, true)
+
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChild("Humanoid")
+        if not hrp or not hum then return end
+
+        local speed = Config.FlyHack.Speed * 50
+        local velocity = V.V3()
+
+        if V.UIS:IsKeyDown(Enum.KeyCode.Space) then velocity = velocity + V.V3(0, speed, 0) end
+        if V.UIS:IsKeyDown(Enum.KeyCode.LeftControl) then velocity = velocity + V.V3(0, -speed, 0) end
+        if V.UIS:IsKeyDown(Enum.KeyCode.W) then velocity = velocity + (V.Cam.CFrame.LookVector * speed) end
+        if V.UIS:IsKeyDown(Enum.KeyCode.S) then velocity = velocity + (V.Cam.CFrame.LookVector * -speed) end
+        if V.UIS:IsKeyDown(Enum.KeyCode.D) then velocity = velocity + (V.Cam.CFrame.RightVector * speed) end
+        if V.UIS:IsKeyDown(Enum.KeyCode.A) then velocity = velocity + (V.Cam.CFrame.RightVector * -speed) end
+
+        hrp.Velocity = velocity
+        hum:ChangeState("Freefall")
+    end)
+end
+
+local function StopFlyHack()
+    if V.FlyHackConnection then V.FlyHackConnection:Disconnect(); V.FlyHackConnection = nil end
+    local char = V.LP.Character
+    setNoClip(char, false)
+
+    if char then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChild("Humanoid")
+        if hrp then
+            hrp.Velocity = V.V3(0, -2, 0)
+            local tmp
+            tmp = V.RS.Stepped:Connect(function()
+                if not hrp or not hrp.Parent then tmp:Disconnect() return end
+                hrp.Velocity = V.V3(0, hrp.Velocity.Y, 0)
+                tmp:Disconnect()
+            end)
+        end
+        if hum then hum:ChangeState("Landing") end
+    end
+end
+
+local function EnableFlyHack()
+    Config.FlyHack.Enabled = true
+    if Config.FlyHack.Active then UpdateFlyHack(V.LP.Character) end
+end
+
+local function DisableFlyHack()
+    Config.FlyHack.Enabled = false
+    Config.FlyHack.Active = false
+    StopFlyHack()
+end
+
+local function SetFlyHackSpeed(val)
+    local num = tonumber(val)
+    if num then
+        num = V.math.clamp(num, 0.1, 100)
+        Config.FlyHack.Speed = num
+    end
+end
+
+local function OnInputBegan(input, gameProcessed)
+    if gameProcessed then return end
+    
+
+    
+    -- FlyHack toggle
+    if input.KeyCode == Config.FlyHack.Key then
+        if not Config.FlyHack.Enabled then return end
+        Config.FlyHack.Active = not Config.FlyHack.Active
+        if Config.FlyHack.Active then
+            UpdateFlyHack(V.LP.Character)
+            print('[FlyHack] Активирован')
+        else
+            StopFlyHack()
+            print('[FlyHack] Деактивирован')
+        end
+        return
+    end
+    
+    -- Aimbot targeting
+    if not Config.Aimbot.Enabled or input.KeyCode ~= Config.Aimbot.StickyKey then return end
+    
+    if V.Target then
+        -- Сбрасываем цель и останавливаем CSync
+        print('[Target] Цель сброшена')
+        if Config.Aimbot.CSyncEnabled then
+            StopCSync()
+        end
+        V.Target = nil
+    else
+        local closest = GetClosestPlayerToCursor()
+        if closest then
+            UpdateTarget(closest) -- Выбираем цель через UpdateTarget
+        else
+            print('[Target] Не найдено подходящих целей')
+        end
+    end
+end
+
+-----------------------
+-- ANTI STOMP FUNCTIONS
+-----------------------
+
+local function EnableAntiStomp()
+    Config.AntiStomp.Enabled = true
+    if V.AntiStompConnection then
+        V.AntiStompConnection:Disconnect()
+    end
+
+    V.AntiStompConnection = V.RS.Stepped:Connect(function()
+        local char = V.LP.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+        if hum and hum.Health <= Config.AntiStomp.EnableOnHealth then
+            local method = Config.AntiStomp.Method
+
+            if method == "Nil_Char" then
+                local cam = V.WS.CurrentCamera
+                local toDestroy = {}
+                for _, v in ipairs(char:GetChildren()) do
+                    if v:IsA("MeshPart") or v:IsA("Part") then
+                        table.insert(toDestroy, v)
+                    elseif v:IsA("Accessory") and v:FindFirstChild("Handle") then
+                        table.insert(toDestroy, v.Handle)
+                    end
+                end
+                for _, part in ipairs(toDestroy) do
+                    if part and part.Parent then pcall(function() part:Destroy() end) end
+                end
+                task.spawn(function()
+                    task.wait(0.1)
+                    if char and char:FindFirstChildOfClass("Humanoid") then
+                        cam.CameraSubject = char:FindFirstChildOfClass("Humanoid")
+                    end
+                end)
+
+            elseif method == "No_Collisions" then
+                for _, part in ipairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then part.CanCollide = false end
+                end
+
+            elseif method == "Remove_Health" then
+                hum.Health = 0
+
+            elseif method == "Change_State" then
+                hum:ChangeState(Enum.HumanoidStateType.Dead)
+
+            elseif method == "Velocity_Flinger" then
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local fling = V.V3(2^16, 2^16, 2^16)
+                    hrp.Velocity, hrp.AssemblyLinearVelocity = fling, fling
+                end
+
+            elseif method == "Cframe_Flinger" then
+                for _, v in ipairs(char:GetChildren()) do
+                    if v:IsA("MeshPart") or v:IsA("Part") then
+                        v.CFrame = v.CFrame * V.CF(0, 5, 0)
+                    end
+                end
+            end
+        end
+    end)
+end
+
+local function DisableAntiStomp()
+    Config.AntiStomp.Enabled = false
+    if V.AntiStompConnection then
+        V.AntiStompConnection:Disconnect()
+        V.AntiStompConnection = nil
+    end
+end
+
+local function SetAntiStompMethod(method)
+    Config.AntiStomp.Method = method
+end
+
+local function SetAntiStompHealth(health)
+    local num = tonumber(health)
+    if num then
+        Config.AntiStomp.EnableOnHealth = V.math.clamp(num, 1, 100)
+    end
+end
+
+-----------------------
+-- HIDE (DESYNC) FUNCTIONS
+-----------------------
+
+local function GetRandomVoidPosition()
+    local angle = V.math.random() * V.math.pi * 2
+    local radius = V.math.random() * V.RandomRadius
+    local x = V.math.cos(angle) * radius
+    local z = V.math.sin(angle) * radius
+    return V.CF(x, -1e5, z)
+end
+
+local function StartHide()
+    if V.HideConnection then V.HideConnection:Disconnect() end
+    
+    V.VoidPosition = V.CF(0, -1e5, 0)
+    
+    V.HideConnection = V.RS.Heartbeat:Connect(function()
+        if V.LP.Character and V.LP.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = V.LP.Character.HumanoidRootPart
+            
+            if Config.Hide.Enabled then
+                V.OriginalCFrame = hrp.CFrame
+                
+                if Config.Hide.Mode == "Original" then
+                    local offset = hrp.CFrame * V.CF(9e9, 0/0, V.math.huge)
+                    hrp.CFrame = offset
+                elseif Config.Hide.Mode == "Random Void" then
+                    V.VoidPosition = GetRandomVoidPosition()
+                    hrp.CFrame = V.VoidPosition
+                elseif Config.Hide.Mode == "Static Void" then
+                    hrp.CFrame = V.VoidPosition
+                end
+                
+                V.RS.RenderStepped:Wait()
+                hrp.CFrame = V.OriginalCFrame
+            end
+        end
+    end)
+end
+
+local function StopHide()
+    if V.HideConnection then
+        V.HideConnection:Disconnect()
+        V.HideConnection = nil
+    end
+    
+    if V.OriginalCFrame and V.LP.Character and V.LP.Character:FindFirstChild("HumanoidRootPart") then
+        V.LP.Character.HumanoidRootPart.CFrame = V.OriginalCFrame
+    end
+end
+
+local function EnableHide()
+    Config.Hide.Enabled = true
+    StartHide()
+end
+
+local function DisableHide()
+    Config.Hide.Enabled = false
+    StopHide()
+end
+
+local function SetHideMode(mode)
+    Config.Hide.Mode = mode
+    if Config.Hide.Mode == "Static Void" then
+        V.VoidPosition = V.CF(0, -1e5, 0)
+    end
+end
+
+-----------------------
+-- AIMBOT UI
+-----------------------
+
+V.AimbotBox = Tabs.Aimbot:AddLeftGroupbox('Aimbot Settings')
+
+V.AimbotBox:AddInput('Prediction', {
+    Default = '0.1',
+    Numeric = true,
+    Finished = true,
+    Text = 'Prediction',
+    Tooltip = 'Значение предикта для аимбота',
+    Callback = function(v)
+        Config.Aimbot.Prediction = tonumber(v) or 0.1
+    end
+})
+
+V.AimbotBox:AddDropdown('ResolverMode', {
+    Values = {'None', 'Velocity', 'MoveDirection', 'CalculateCFrame'},
+    Default = 1,
+    Multi = false,
+    Text = 'Resolver Mode',
+    Tooltip = 'Режим резолвера для предикта',
+    Callback = function(v)
+        Config.Aimbot.ResolverMode = v
+    end
+})
+
+V.AimbotBox:AddDropdown('SelectedPart', {
+    Values = {'Head', 'HumanoidRootPart', 'UpperTorso', 'LowerTorso'},
+    Default = 2,
+    Multi = false,
+    Text = 'Target Part',
+    Tooltip = 'Часть тела для прицеливания',
+    Callback = function(v)
+        Config.Aimbot.SelectedPart = v
+    end
+})
+
+V.TargetBox = Tabs.Aimbot:AddLeftGroupbox('Targeting')
+
+V.TargetBox:AddToggle('TargetingEnabled', {
+    Text = 'Targeting Enabled',
+    Default = true,
+    Tooltip = 'Включить/выключить систему захвата цели',
+    Callback = function(Value)
+        Config.Aimbot.Enabled = Value
+        print('[Aimbot] Targeting ' .. (Value and 'включен' or 'выключен'))
+    end
+})
+
+V.TargetBox:AddToggle('AimbotEnabled', {
+    Text = 'Aimbot Enabled',
+    Default = false,
+    Tooltip = 'Включить/выключить аимбот',
+    Callback = function(v)
+        Config.Aimbot.AimbotEnabled = v
+    end
+})
+
+V.TargetBox:AddToggle('CSyncEnabled', {
+    Text = 'CSync',
+    Default = false,
+    Tooltip = 'Включить/выключить C-Sync (стрейф вокруг цели)',
+    Callback = function(v)
+        Config.Aimbot.CSyncEnabled = v
+        if v then
+            StartCSync()
+        else
+            StopCSync()
+        end
+    end
+})
+
+V.TargetBox:AddToggle('MagicBullets', {
+    Text = 'MagicBullets',
+    Default = false,
+    Tooltip = 'Пули мгновенно попадают в выбранную цель',
+    Callback = function(v)
+        Config.Aimbot.MagicBullets = v
+    end
+})
+
+V.TargetBox:AddToggle('ViewTarget', {
+    Text = 'View',
+    Default = false,
+    Tooltip = 'Камера следует за целью',
+    Callback = function(v)
+        Config.Aimbot.ViewTarget = v
+    end
+})
+
+-- AutoStomp Toggle
+V.TargetBox:AddToggle('AutoStompEnabled', {
+    Text = 'AutoStomp',
+    Default = false,
+    Tooltip = 'Автостомп выбитой цели',
+    Callback = function(v)
+        Config.Aimbot.AutoStompEnabled = v
+    end
+})
+
+-- GunExploit Toggle
+V.TargetBox:AddToggle('GunExploitEnabled', {
+    Text = 'GunExploit',
+    Default = false,
+    Tooltip = 'Автоматически экипирует револьвер, включает рапид фаер и автоперезарядку',
+    Callback = function(v)
+        Config.Aimbot.GunExploitEnabled = v
+        if v then
+            StartGunExploit()
+        else
+            StopGunExploit()
+        end
+    end
+})
+
+-- AutoStomp Settings UI
+local AutoStompBox = Tabs.Aimbot:AddRightGroupbox('AutoStomp Settings')
+
+AutoStompBox:AddSlider('DelayBeforeStomp', {
+    Text = 'Delay Start',
+    Default = 0.25,
+    Min = 0,
+    Max = 2,
+    Rounding = 2,
+    Compact = false,
+    Callback = function(v)
+        Config.Aimbot.DelayBeforeStomp = v
+    end
+})
+
+AutoStompBox:AddSlider('StompInterval', {
+    Text = 'Stomp Interval',
+    Default = 0.4,
+    Min = 0.1,
+    Max = 1,
+    Rounding = 2,
+    Compact = false,
+    Callback = function(v)
+        Config.Aimbot.StompInterval = v
+    end
+})
+
+
+
+
+
+
+
+-- Возврат слайдера Y Offset
+AutoStompBox:AddSlider('YOffset', {
+    Text = 'Y Offset',
+    Default = 2,
+    Min = -5,
+    Max = 5,
+    Rounding = 1,
+    Compact = false,
+    Callback = function(v)
+        Config.Aimbot.YOffset = v
+    end
+})
+
+-- Targeting Modes UI
+local TargetModeBox = Tabs.Aimbot:AddLeftGroupbox('Targeting modes')
+TargetModeBox:AddDropdown('TargetMode', {
+    Values = {'Sticky','Nuker'},
+    Default = 1,
+    Multi = false,
+    Text = 'Target Mode',
+    Tooltip = 'Выбор режима захвата цели',
+    Callback = function(v)
+        Config.Aimbot.TargetMode = v
+    end
+})
+
+V.TargetBox:AddLabel('Sticky Key'):AddKeyPicker('StickyKeybind', {
+    Default = 'Q',
+    SyncToggleState = false,
+    Text = 'Sticky Target',
+    NoUI = false,
+    Tooltip = 'Клавиша для захвата/сброса цели',
+    ChangedCallback = function(New)
+        -- Сбрасываем текущую цель при смене кейбинда
+        if V.Target then
+            print('[Target] Цель сброшена при смене кейбинда')
+            if Config.Aimbot.CSyncEnabled then
+                StopCSync()
+            end
+            V.Target = nil
+        end
+        
+        Config.Aimbot.StickyKey = (function()
+            -- Если New уже EnumItem, используем его напрямую
+            if typeof(New) == "EnumItem" then
+                print('[Aimbot] Sticky keybind изменен на:', New.Name)
+                return New
+            end
+            -- Если New строка, конвертируем в EnumItem
+            local kc = Enum.KeyCode[New] or Enum.KeyCode.Unknown
+            if kc ~= Enum.KeyCode.Unknown then
+                print('[Aimbot] Sticky keybind изменен на:', New)
+                return kc
+            else
+                warn('[Aimbot] Некорректный keybind:', New)
+                return Enum.KeyCode.Unknown
+            end
+        end)()
+    end
+})
+
+-----------------------
+-- SKIP SETTINGS UI
+-----------------------
+
+V.SkipBox = Tabs.Aimbot:AddRightGroupbox('Skip')
+V.SkipBox:AddToggle('SkipCovered', {
+    Text = 'Skip Covered',
+    Default = false,
+    Tooltip = 'Пропускать игроков, которые находятся за стеной',
+    Callback = function(v)
+        Config.Aimbot.SkipCovered = v
+    end
+})
+
+V.SkipBox:AddToggle('SkipKnocked', {
+    Text = 'Skip Knocked',
+    Default = false,
+    Tooltip = 'Пропускать игроков, которые в нокауте',
+    Callback = function(v)
+        Config.Aimbot.SkipKnocked = v
+    end
+})
+
+V.SkipBox:AddToggle('SkipGrabbed', {
+    Text = 'Skip Grabbed',
+    Default = false,
+    Tooltip = 'Пропускать игроков, которых держат',
+    Callback = function(v)
+        Config.Aimbot.SkipGrabbed = v
+    end
+})
+
+-----------------------
+-- RESET TARGET ON UI
+-----------------------
+
+V.ResetBox = Tabs.Aimbot:AddRightGroupbox('ResetTargetON')
+V.ResetBox:AddToggle('ResetKnocked', {
+    Text = 'Knocked',
+    Default = false,
+    Tooltip = 'Сбрасывать цель, если она нокаутирована',
+    Callback = function(v)
+        Config.Aimbot.ResetKnocked = v
+    end
+})
+V.ResetBox:AddToggle('ResetGrabbed', {
+    Text = 'Grabbed',
+    Default = false,
+    Tooltip = 'Сбрасывать цель, если её схватили',
+    Callback = function(v)
+        Config.Aimbot.ResetGrabbed = v
+    end
+})
+V.ResetBox:AddToggle('ResetDeath', {
+    Text = 'Death',
+    Default = false,
+    Tooltip = 'Сбрасывать цель при смерти',
+    Callback = function(v)
+        Config.Aimbot.ResetDeath = v
+    end
+})
+
+-----------------------
+-- VISUALIZATIONS UI
+-----------------------
+
+V.VisBox = Tabs.Aimbot:AddRightGroupbox('Visualizations')
+
+V.HLToggle = V.VisBox:AddToggle('TargetHighlight', {
+    Text = 'Target Highlight',
+    Default = false,
+    Tooltip = 'Подсвечивать выбранную цель',
+    Callback = function(v)
+        Config.TargetHighlight.Enabled = v
+        if not v and V.CurrentHighlight then
+            V.CurrentHighlight:Destroy()
+            V.CurrentHighlight = nil
+        end
+    end
+})
+
+V.HLToggle:AddColorPicker('OutlineColor', {
+    Default = Color3.new(1, 0, 0),
+    Title = 'Outline Color',
+    Callback = function(color)
+        Config.TargetHighlight.OutlineColor = color
+    end
+})
+
+V.HLToggle:AddColorPicker('FillColor', {
+    Default = Color3.new(1, 0, 0),
+    Title = 'Fill Color',
+    Callback = function(color)
+        Config.TargetHighlight.FillColor = color
+    end
+})
+
+V.VisBox:AddSlider('OutlineTransparency', {
+    Text = 'Outline Transparency',
+    Default = 0,
+    Min = 0,
+    Max = 1,
+    Rounding = 2,
+    Compact = false,
+    Callback = function(v)
+        Config.TargetHighlight.OutlineTransparency = v
+    end
+})
+
+V.VisBox:AddSlider('FillTransparency', {
+    Text = 'Fill Transparency',
+    Default = 0.5,
+    Min = 0,
+    Max = 1,
+    Rounding = 2,
+    Compact = false,
+    Callback = function(v)
+        Config.TargetHighlight.FillTransparency = v
+    end
+})
+
+-----------------------
+-- BULLET TRACERS UI
+-----------------------
+
+local BulletTracersBox = Tabs.Visuals:AddLeftGroupbox('BulletTracers')
+
+local BulletTracersToggle = BulletTracersBox:AddToggle('BulletTracers', {
+    Text = 'BulletTracers',
+    Default = false,
+    Tooltip = 'Показывать трассеры пуль',
+    Callback = function(v)
+        Config.BulletTracers.Enabled = v
+        if v then
+            InitBulletTracers()
+        else
+            CleanupBulletTracers()
+        end
+    end
+})
+
+BulletTracersToggle:AddColorPicker('BulletTracerColor', {
+    Default = Color3.new(1, 1, 1),
+    Title = 'Tracer Color',
+    Callback = function(color)
+        Config.BulletTracers.Color = color
+    end
+})
+
+BulletTracersBox:AddDropdown('TracerMode', {
+    Values = {'Drawing', 'Texture'},
+    Default = 1,
+    Multi = false,
+    Text = 'Mode',
+    Tooltip = 'Режим отображения трассеров: Drawing (2D линии) или Texture (3D beam)',
+    Callback = function(v)
+        Config.BulletTracers.Mode = v
+        -- Очищаем активные трассеры при смене режима
+        if Config.BulletTracers.Enabled then
+            CleanupBulletTracers()
+            InitBulletTracers()
+        end
+    end
+})
+
+BulletTracersBox:AddSlider('TracerThickness', {
+    Text = 'Thickness',
+    Default = 2,
+    Min = 1,
+    Max = 10,
+    Rounding = 1,
+    Compact = false,
+    Tooltip = 'Толщина трассеров (для Drawing и Texture режимов)',
+    Callback = function(v)
+        Config.BulletTracers.Thickness = v
+    end
+})
+
+BulletTracersBox:AddSlider('TracerDuration', {
+    Text = 'Duration',
+    Default = 0.6,
+    Min = 0.1,
+    Max = 3.0,
+    Rounding = 1,
+    Compact = false,
+    Tooltip = 'Время жизни трассеров в секундах',
+    Callback = function(v)
+        Config.BulletTracers.Duration = v
+    end
+})
+
+-----------------------
+-- CSYNC SETTINGS UI
+-----------------------
+
+local CSyncBox = Tabs.Aimbot:AddRightGroupbox('CSync Settings')
+
+CSyncBox:AddSlider('CSyncRange', {
+    Text = 'Strafe Range',
+    Default = 10,
+    Min = 5,
+    Max = 50,
+    Rounding = 1,
+    Compact = false,
+    Tooltip = 'Радиус стрейфа вокруг цели',
+    Callback = function(v)
+        Config.Aimbot.CSyncRange = v or 10
+    end
+})
+
+CSyncBox:AddSlider('CSyncHeight', {
+    Text = 'Height Variation',
+    Default = 5,
+    Min = 0,
+    Max = 30,
+    Rounding = 1,
+    Compact = false,
+    Tooltip = 'Вариация высоты стрейфа',
+    Callback = function(v)
+        Config.Aimbot.CSyncHeight = v or 5
+    end
+})
+
+local CSyncVisToggle = CSyncBox:AddToggle('CSyncVisualize', {
+    Text = 'Visualize',
+    Default = false,
+    Tooltip = 'Визуализация позиции десинка',
+    Callback = function(v)
+        Config.Aimbot.CSyncVisualize = v
+        UpdateCSyncVisualization()
+    -- Обновление камеры произойдёт автоматически через RenderStepped
+    end
+})
+
+CSyncVisToggle:AddColorPicker('CSyncVisualizeColor', {
+    Default = Color3.new(1, 1, 1),
+    Title = 'Visualize Color',
+    Callback = function(color)
+        Config.Aimbot.CSyncVisualizeColor = color
+        if V.CSyncVisualization and V.CSyncVisualization.gui then
+            V.CSyncVisualization.gui.img3.ImageColor3 = color
+        end
+    end
+})
+
+local function AutoResetTarget()
+    if not V.Target or not V.Target.player then return end
+    
+    if (Config.Aimbot.ResetKnocked and IsPlayerKO(V.Target.player)) or
+       (Config.Aimbot.ResetGrabbed and IsPlayerGrabbed(V.Target.player)) or
+       (Config.Aimbot.ResetDeath and (not V.Target.player.Character or not V.Target.player.Character:FindFirstChildOfClass('Humanoid') or V.Target.player.Character:FindFirstChildOfClass('Humanoid').Health <= 0)) then
+        print('[ResetTarget] Сброс цели')
+        V.Target = nil
+    end
+end
+
+
+-----------------------
+-- MAGIC BULLETS FUNCTION
+-----------------------
+function ShootAtPlayer(player)
+    if not player or not player.Character or not Config.Aimbot.MagicBullets then return end
+    -- Проверка патронов
+    local weaponTool = V.LP.Character and V.LP.Character:FindFirstChildWhichIsA("Tool")
+    if weaponTool then
+        local ammo = weaponTool:FindFirstChild("Ammo")
+        if ammo and ammo.Value <= 0 then return end
+    end
+    -- Не стреляем по мёртвым, но разрешаем стрелять по Grabbed
+    if IsPlayerKO(player) then return end
+    -- Ждём пока ForceField исчезнет, чтобы bullets прошли
+    if player.Character:FindFirstChildOfClass("ForceField") then return end
+    local head = player.Character:FindFirstChild("Head")
+    if not head then return end
+    local character = V.LP.Character
+    if not character then return end
+    local weapon
+    for _, tool in ipairs(character:GetChildren()) do
+        if tool:IsA("Tool") then
+            weapon = tool
+            break
+        end
+    end
+    if not weapon then return end
+    local handle = weapon:FindFirstChild("Handle")
+    if not handle then return end
+    local headPos = head.Position
+    local args = {
+        "ShootGun",
+        handle,
+        headPos,
+        {headPos, headPos, headPos, headPos, headPos},
+        {head, head, head, head, head},
+        {Vector3.new(0,1,0),Vector3.new(0,1,0),Vector3.new(0,1,0),Vector3.new(0,1,0),Vector3.new(0,1,0)},
+        {},
+        os.clock(),
+        999999999,
+        {headPos, headPos, headPos, headPos, headPos},
+        5,
+        0.2,
+        headPos
+    }
+    local shootEvent = V.RSStorage:FindFirstChild("ShootEvent")
+    if shootEvent then
+        shootEvent:FireServer(unpack(args))
+    end
+end
+
+-----------------------
+-- MISC UI (ANTI STOMP)
+-----------------------
+
+V.AntiStompBox = Tabs.Misc:AddLeftGroupbox('Anti Stomp')
+
+V.AntiStompBox:AddToggle('AntiStompEnabled', {
+    Text = 'Anti Stomp Enabled',
+    Default = false,
+    Tooltip = 'Включить/выключить защиту от стомпа',
+    Callback = function(v)
+        Config.AntiStomp.Enabled = v
+        if v then
+            EnableAntiStomp()
+        else
+            DisableAntiStomp()
+        end
+    end
+})
+
+V.AntiStompBox:AddDropdown('AntiStompMethod', {
+    Values = {'Nil_Char', 'No_Collisions', 'Remove_Health', 'Change_State', 'Velocity_Flinger', 'Cframe_Flinger'},
+    Default = 1,
+    Multi = false,
+    Text = 'Method',
+    Tooltip = 'Метод защиты от стомпа',
+    Callback = function(v)
+        SetAntiStompMethod(v)
+    end
+})
+
+V.AntiStompBox:AddSlider('AntiStompHealth', {
+    Text = 'Health Threshold',
+    Default = 99,
+    Min = 1,
+    Max = 100,
+    Rounding = 0,
+    Compact = false,
+    Tooltip = 'Порог здоровья для активации Anti Stomp',
+    Callback = function(v)
+        SetAntiStompHealth(v)
+    end
+})
+
+-- SpeedHack секция
+V.SpeedHackBox = Tabs.Misc:AddRightGroupbox('SpeedHack')
+
+V.SpeedHackBox:AddInput('SpeedHackSpeed', {
+    Default = '50',
+    Numeric = true,
+    Finished = true,
+    Text = 'Speed',
+    Tooltip = 'Скорость спидхака (1-500)',
+    Callback = function(v)
+        getgenv().SetSpeedhackSpeed(v)
+    end
+})
+
+V.SpeedHackBox:AddToggle('SpeedHackEnabled', {
+    Text = 'SpeedHack Enabled',
+    Default = false,
+    Tooltip = 'Включить/выключить спидхак (общее разрешение)',
+    Callback = function(v)
+        if v then
+            getgenv().EnableSpeedhack()
+        else
+            getgenv().DisableSpeedhack()
+        end
+    end
+})
+
+V.SpeedHackBox:AddLabel('SpeedHack Key'):AddKeyPicker('SpeedHackKeybind', {
+    Default = 'X',
+    SyncToggleState = false,
+    Text = 'SpeedHack Activity',
+    NoUI = false,
+    Tooltip = 'Клавиша для активации спидхака (только при включенном Enabled)',
+    ChangedCallback = function(New)
+        -- Сбрасываем активность SpeedHack при смене кейбинда
+        if getgenv().SpeedhackConfig and getgenv().SpeedhackConfig.Active then
+            getgenv().SpeedhackConfig.Active = false
+            print('[SpeedHack] Активность сброшена при смене кейбинда')
+        end
+        
+        getgenv().SpeedhackConfig.Keybind = (function()
+            -- Если New уже EnumItem, используем его напрямую
+            if typeof(New) == "EnumItem" then
+                print('[SpeedHack] Keybind изменен на:', New.Name)
+                return New
+            end
+            -- Если New строка, конвертируем в EnumItem
+            local kc = Enum.KeyCode[New] or Enum.KeyCode.Unknown
+            if kc ~= Enum.KeyCode.Unknown then
+                print('[SpeedHack] Keybind изменен на:', New)
+                return kc
+            else
+                warn('[SpeedHack] Некорректный keybind:', New)
+                return Enum.KeyCode.Unknown
+            end
+        end)()
+    end
+})
+
+-- FlyHack секция
+V.FlyHackBox = Tabs.Misc:AddLeftGroupbox('FlyHack')
+
+V.FlyHackBox:AddInput('FlyHackSpeed', {
+    Default = '1',
+    Numeric = true,
+    Finished = true,
+    Text = 'Speed',
+    Tooltip = 'Скорость полёта (0.1-100)',
+    Callback = function(v)
+        SetFlyHackSpeed(v)
+    end
+})
+
+V.FlyHackBox:AddToggle('FlyHackEnabled', {
+    Text = 'FlyHack Enabled',
+    Default = false,
+    Tooltip = 'Включить/выключить флайхак',
+    Callback = function(v)
+        Config.FlyHack.Enabled = v
+        if v then
+            EnableFlyHack()
+        else
+            DisableFlyHack()
+        end
+    end
+})
+
+V.FlyHackBox:AddLabel('FlyHack Key'):AddKeyPicker('FlyHackKeybind', {
+    Default = 'F',
+    SyncToggleState = false,
+    Text = 'FlyHack Toggle',
+    NoUI = false,
+    Tooltip = 'Клавиша для включения/выключения полёта (только при включенном FlyHack)',
+    ChangedCallback = function(New)
+        -- Сбрасываем состояние FlyHack при смене кейбинда
+        if Config.FlyHack.Active then
+            Config.FlyHack.Active = false
+            StopFlyHack()
+            print('[FlyHack] Отключен при смене кейбинда')
+        end
+        
+        Config.FlyHack.Key = (function()
+            -- Если New уже EnumItem, используем его напрямую
+            if typeof(New) == "EnumItem" then
+                print('[FlyHack] Keybind изменен на:', New.Name)
+                return New
+            end
+            -- Если New строка, конвертируем в EnumItem
+            local kc = Enum.KeyCode[New] or Enum.KeyCode.Unknown
+            if kc ~= Enum.KeyCode.Unknown then
+                print('[FlyHack] Keybind изменен на:', New)
+                return kc
+            else
+                warn('[FlyHack] Некорректный keybind:', New)
+                return Enum.KeyCode.Unknown
+            end
+        end)()
+    end
+})
+
+-- Hide секция
+V.HideBox = Tabs.Misc:AddRightGroupbox('Hide')
+
+V.HideBox:AddToggle('HideEnabled', {
+    Text = 'Hide Enabled',
+    Default = false,
+    Tooltip = 'Включить/выключить систему скрытия (desync)',
+    Callback = function(v)
+        Config.Hide.Enabled = v
+        if v then
+            EnableHide()
+        else
+            DisableHide()
+        end
+    end
+})
+
+V.HideBox:AddDropdown('HideMode', {
+    Values = {'Original', 'Random Void', 'Static Void'},
+    Default = 1,
+    Multi = false,
+    Text = 'Mode',
+    Tooltip = 'Режим скрытия персонажа',
+    Callback = function(v)
+        SetHideMode(v)
+    end
+})
+
+-----------------------
+-- CONNECTIONS
+-----------------------
+V.RS.RenderStepped:Connect(function()
+    AutoResetTarget()
+    if Config.Aimbot.TargetMode == 'Nuker' and GetClosestPlayerToCursor() and (not V.Target or V.Target.player ~= GetClosestPlayerToCursor()) then
+        UpdateTarget(GetClosestPlayerToCursor())
+    end
+    UpdateTargetHighlight(); UpdateCSyncVisualization(); UpdateViewTarget(); ApplyAutoStomp(); UpdateBulletTracers()
+    
+    if Config.BulletTracers.Enabled then
+        for _, child in pairs(V.WS.Ignored:GetChildren()) do
+            if child.Name == "BULLET_RAYS" then child:Destroy() end
+        end
+    end
+    if Config.Aimbot.MagicBullets and V.Target and V.Target.player and os.clock() - (V.LastMagicShoot or 0) > 0.15 then
+        ShootAtPlayer(V.Target.player); V.LastMagicShoot = os.clock()
+    end
+end)
+V.UIS.InputBegan:Connect(OnInputBegan)
+
+-- SpeedHack respawn support
+V.LP.CharacterAdded:Connect(function(char)
+    if Config.SpeedHack.Enabled then
+        UpdateSpeedHack(char)
+    end
+    -- FlyHack respawn support
+    if Config.FlyHack.Enabled and Config.FlyHack.Active then
+        UpdateFlyHack(char)
+    end
+end)
+
+V.Save:BuildConfigSection(Tabs.Config)
+V.ThemeBox = Tabs.Config:AddLeftGroupbox('')
+V.Theme:ApplyToGroupbox(V.ThemeBox)
+V.Theme:LoadDefault()
+V.Save:LoadAutoloadConfig()
+
+-----------------------
+-- C-SYNC SPOOF HOOK
+local __csync
+__csync = hookmetamethod(game, "__index", function(t,k)
+    if not checkcaller() and k=="CFrame" and V.SavedDesync and Config.Aimbot.CSyncEnabled then
+        local lpRoot = V.LP.Character and V.LP.Character:FindFirstChild("HumanoidRootPart")
+        if t==lpRoot then
+            return V.SavedDesync
+        end
+    end
+    return __csync(t,k)
+end)
+
+-- AIMBOT HOOK
+-----------------------
+local __aimbot
+__aimbot = hookmetamethod(game, "__index", function(t, k)
+    if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
+        if not Check() then
+            return __aimbot(t, k)
+        end
+
+        local selPart = V.Target.character and V.Target.character:FindFirstChild(Config.Aimbot.SelectedPart)
+        if selPart then
+            local predictedPos = GetPredictedPosition(V.Target.player) or selPart.Position
+            local hit = V.CF(predictedPos)
+            return k == "Hit" and hit or selPart
+        end
+    end
+    return __aimbot(t, k)
+end)
+
+-- HIDE HOOK
+-----------------------
+V.HideHook = hookmetamethod(game, "__index", function(t, k)
+    if not checkcaller() and k == "CFrame" and Config.Hide.Enabled and V.LP.Character and V.LP.Character:FindFirstChild("HumanoidRootPart") and V.LP.Character:FindFirstChild("Humanoid") and V.LP.Character:FindFirstChild("Humanoid").Health > 0 then
+        if t == V.LP.Character.HumanoidRootPart and V.OriginalCFrame ~= nil then
+            return V.OriginalCFrame
+        end
+    end
+    return V.HideHook(t, k)
+end)
+
+--================== SPEEDHACK ==================--
+
+-- Конфиг
+if not getgenv().SpeedhackConfig then
+    getgenv().SpeedhackConfig = {
+        Enabled  = false,
+        Active   = false,
+        Speed    = 50,
+        Keybind  = Enum.KeyCode.X
+    }
+end
+
+-- Обновление спидхака
+local speedHackConnection
+local function updateSpeedHack(character)
+    if not character then return end
+    local rootPart = character:WaitForChild("HumanoidRootPart")
+    local humanoid = character:WaitForChild("Humanoid")
+
+    if speedHackConnection then speedHackConnection:Disconnect() end
+    speedHackConnection = V.RS.Heartbeat:Connect(function(dt)
+        if getgenv().SpeedhackConfig.Enabled and getgenv().SpeedhackConfig.Active then
+            local move = humanoid.MoveDirection
+            if move.Magnitude > 0 then
+                rootPart.CFrame = rootPart.CFrame + (move.Unit * getgenv().SpeedhackConfig.Speed * dt)
+            end
+        end
+    end)
+end
+
+-- Публичные функции
+getgenv().EnableSpeedhack = function()
+    getgenv().SpeedhackConfig.Enabled = true
+    updateSpeedHack(V.LP.Character)
+end
+
+getgenv().DisableSpeedhack = function()
+    getgenv().SpeedhackConfig.Enabled = false
+    getgenv().SpeedhackConfig.Active  = false
+    if speedHackConnection then speedHackConnection:Disconnect(); speedHackConnection = nil end
+end
+
+getgenv().ToggleSpeedhackKey = function()
+    if not getgenv().SpeedhackConfig.Enabled then return end
+    getgenv().SpeedhackConfig.Active = not getgenv().SpeedhackConfig.Active
+end
+
+getgenv().SetSpeedhackSpeed = function(val)
+    local num = tonumber(val)
+    if num then
+        num = V.math.clamp(num,1,2000000)
+        getgenv().SpeedhackConfig.Speed = num
+    end
+end
+
+-- Поддержка респавна
+V.LP.CharacterAdded:Connect(function(char)
+    if getgenv().SpeedhackConfig.Enabled then
+        updateSpeedHack(char)
+    end
+end)
+
+-- SPEEDHACK INPUT HANDLING
+-----------------------
+V.UIS.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    -- SpeedHack Keybind
+    if input.KeyCode == getgenv().SpeedhackConfig.Keybind then
+        getgenv().ToggleSpeedhackKey()
+    end
+end)
+--------------------------------------------------
+
+-- =================== MAIN LOOP & CHAMS ===================--
+-- Default config for Chams
+if not Config.Chams then
+    Config.Chams = {Enabled = false, Color = Color3.new(1,1,1)}
+end
+
+-- Storage for player highlights
+V.ChamsHighlights = V.ChamsHighlights or {}
+
+local function CreateChamHighlight(character)
+    if not character then return nil end
+    local h = Instance.new("Highlight")
+    h.Parent = character
+    h.FillColor = Config.Chams.Color
+    h.FillTransparency = Config.Chams.FillTransparency
+    h.OutlineTransparency = 1
+    h.Adornee = character
+    return h
+end
+
+local function AddChamForPlayer(player)
+    if not Config.Chams.Enabled then return end
+    if V.ChamsHighlights[player] then return end
+    if not player.Character then return end
+    local hum = player.Character:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.RigType ~= Enum.HumanoidRigType.R15 then return end
+    V.ChamsHighlights[player] = CreateChamHighlight(player.Character)
+    player.CharacterAdded:Connect(function(char)
+        if V.ChamsHighlights[player] then V.ChamsHighlights[player]:Destroy(); V.ChamsHighlights[player] = nil end
+        if Config.Chams.Enabled then
+            local hhum = char:FindFirstChildOfClass("Humanoid")
+            if hhum and hhum.RigType == Enum.HumanoidRigType.R15 then
+                V.ChamsHighlights[player] = CreateChamHighlight(char)
+            end
+        end
+    end)
+end
+
+local function EnableChams()
+    for _, plr in ipairs(V.Players:GetPlayers()) do
+        AddChamForPlayer(plr)
+    end
+    if not V.ChamsPlayerAddedConn then
+        V.ChamsPlayerAddedConn = V.Players.PlayerAdded:Connect(function(p)
+            p.CharacterAdded:Wait()
+            AddChamForPlayer(p)
+        end)
+    end
+end
+
+local function DisableChams()
+    for p, h in pairs(V.ChamsHighlights) do
+        if h then h:Destroy() end
+        V.ChamsHighlights[p] = nil
+    end
+    if V.ChamsPlayerAddedConn then V.ChamsPlayerAddedConn:Disconnect(); V.ChamsPlayerAddedConn = nil end
+end
+
+local function UpdateChamsVisuals()
+    for _, h in pairs(V.ChamsHighlights) do
+        if h then
+            h.FillColor = Config.Chams.Color
+            h.FillTransparency = Config.Chams.FillTransparency
+            h.OutlineTransparency = 1
+        end
+    end
+end
+
+-- UI Elements
+local ChamsBox = Tabs.Visuals:AddRightGroupbox('Chams')
+local ChamsToggle = ChamsBox:AddToggle('ChamsEnabled', {
+    Text = 'Enabled',
+    Default = Config.Chams.Enabled,
+    Callback = function(v)
+        Config.Chams.Enabled = v
+        if v then EnableChams() else DisableChams() end
+    end
+})
+
+ChamsBox:AddLabel('Color'):AddColorPicker('ChamsColor', {
+    Default = Config.Chams.Color,
+    Title = 'Chams Color',
+    Transparency = 0,
+    Callback = function(c)
+        Config.Chams.Color = c
+        UpdateChamsVisuals()
+    end
+})
+
+-- Main RenderStepped loop for AutoStomp & Highlights
+if V.MainLoopConnection then V.MainLoopConnection:Disconnect() end
+V.MainLoopConnection = V.RS.RenderStepped:Connect(function()
+    UpdateTargetHighlight()
+    UpdateViewTarget()
+    -- ApplyAutoStomp уже проверяет наличие цели и флага
+    ApplyAutoStomp()
+end)
+
