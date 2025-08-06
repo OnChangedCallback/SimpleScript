@@ -3,10 +3,9 @@ loadstring(game:HttpGet('https://pastebin.com/raw/gimbTwW1'))()
 -----------------------
 local V = {
     -- Libraries
-    Lib = loadstring(game:HttpGet('https://raw.githubusercontent.com/OnChangedCallback/SimpleScript/refs/heads/main/lib'))(),
+    Lib = loadstring(game:HttpGet('https://raw.githubusercontent.com/OnChangedCallback/SimpleScript/refs/heads/main/lnb'))(),
     Theme = loadstring(game:HttpGet('https://raw.githubusercontent.com/OnChangedCallback/SimpleScript/refs/heads/main/Themes'))(),
     Save = loadstring(game:HttpGet('https://raw.githubusercontent.com/OnChangedCallback/SimpleScript/refs/heads/main/SAves'))(),
-    
     
     -- Services
     Players = game:GetService("Players"),
@@ -57,16 +56,10 @@ local V = {
     RandomRadius = 1e5,
     HideHook = nil,
     
-    -- GunExploit
-    GunExploitActive = false,
+    -- GunExploit (Simplified)
     CurrentWeapon = nil,
-    MainEvent = nil,
-    GunExploitConnection = nil,
-    GunExploitAddedConn = nil,
-    GunExploitRemovedConn = nil,
-    CharacterAddedConnection = nil,
-    RapidFireConnection = nil,
     AutoReloadConnection = nil,
+    LastReloadTime = 0,
     
     -- AntiStomp
     AntiStompConnection = nil,
@@ -76,9 +69,22 @@ local V = {
     
     -- FlyHack
     FlyHackConnection = nil,
-    ChamsHighlights = {},
-    ChamsPlayerAddedConn = nil,
     MainLoopConnection = nil,
+    -- Chams
+    ChamsObjects = {},
+    ChamsConnections = {},
+    -- Tracers
+    TracerLines = {},
+    TracerConnections = {},
+    TracerLoopConnection = nil,
+    -- Boxes ESP
+    BoxesCache = {},
+    BoxesConnection = nil,
+    BoxesPlayerConnections = {},
+    -- ShowHitbox
+    CurrentHitbox = nil,
+    OriginalHitboxTransparency = nil,
+    OriginalHitboxMaterial = nil,
     
     LastReload = 0
 }
@@ -90,13 +96,13 @@ local V = {
 V.Theme:SetLibrary(V.Lib)
 V.Save:SetLibrary(V.Lib)
 
--- Create window
 local Win = V.Lib:CreateWindow({
     Title = 'SimpleBot | Really simple | ' .. os.date('%d.%m.%Y'),
     Themeable = true,
     Info = 'SimpleBot',
     Center = true,
-    AutoShow = true
+    AutoShow = true,
+    Size = UDim2.fromOffset(550, 700)
 })
 
 -- Create tabs
@@ -130,7 +136,7 @@ local Config = {
         CSyncEnabled = false,
     CSyncRange = 10,
     CSyncHeight = 5,
-    CSyncVisualize = false,
+    CSyncVisualize = false, 
     CSyncVisualizeColor = Color3.new(1, 1, 1),
     MagicBullets = false,
         ViewTarget = false,
@@ -138,10 +144,17 @@ local Config = {
         DelayBeforeStomp = 0.25,
         StompInterval = 0.4,
         
-        -- GunExploit Settings
+        -- GunExploit Settings (Simplified)
         GunExploitEnabled = false,
+        AutoReload = false,
+        AutoEquipRevolver = false,
         
-        YOffset = 2
+        YOffset = 2,
+        
+        -- ShowHitbox Settings
+        ShowHitbox = false,
+        HitboxColor = Color3.new(1, 0, 0),
+        HitboxMaterial = 'ForceField'
     },
     TargetHighlight = {
         Enabled = false,
@@ -152,10 +165,30 @@ local Config = {
     },
     Chams = {
         Enabled = false,
-        Color = Color3.new(1,1,1),
-        FillTransparency = 0.5
+        Color = Color3.new(0, 150/255, 1), -- default cyan-ish
+        Transparency = 0.3
     },
-    
+    Tracers = {
+        Enabled = false,
+        Color = Color3.new(1,1,1),
+        Transparency = 0,
+        Thickness = 1,
+        StartPosition = 'Bottom', -- 'Mouse', 'Middle', 'Bottom', 'Top'
+        EndPart = 'Torso', -- 'Torso' or 'Head'
+        ShowBehind = true,
+        TargetTracerEnabled = false,
+        TargetTracerColor = Color3.new(1,0,0)
+    },
+    Boxes = {
+        Enabled = false,
+        Color = Color3.new(1, 0, 0),
+        Thickness = 0.9,
+        HealthBarEnabled = false,
+        HealthBarColor = Color3.new(0, 1, 0),
+        HealthBarBgColor = Color3.new(40/255, 40/255, 40/255),
+        HealthBarWidth = 2
+    },
+
     BulletTracers = {
         Enabled = false,
         Mode = "Drawing", -- Drawing или Texture
@@ -848,7 +881,7 @@ local function CreateAutoStompFollowPart()
         local p = Instance.new("Part")
         p.Name, p.Anchored, p.CanCollide, p.Size, p.Transparency, p.Parent = "AutoStompFollowPart", true, false, V.V3(0.1,0.1,0.1), 1, V.WS
         if V.LP.Character and V.LP.Character:FindFirstChild("HumanoidRootPart") then
-            p.CFrame = V.CF((V.LP.Character:FindFirstChild("HumanoidRootPart")).Position + V.V3(0, 1.48, 0))
+            p.CFrame = V.CF((V.LP.Character:FindFirstChild("HumanoidRootPart")).Position + V.V3(0, 1.58, 0))
         end
         return p
     end)()
@@ -2344,54 +2377,120 @@ V.UIS.InputBegan:Connect(function(input, gameProcessed)
 end)
 --------------------------------------------------
 
--- =================== MAIN LOOP & CHAMS ===================--
--- Default config for Chams
-if not Config.Chams then
-    Config.Chams = {Enabled = false, Color = Color3.new(1,1,1)}
+-- CHAMS SYSTEM
+local R15Parts = {
+    Head = true, UpperTorso = true, LowerTorso = true,
+    LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
+    RightUpperArm = true, RightLowerArm = true, RightHand = true,
+    LeftUpperLeg = true, LeftLowerLeg = true, LeftFoot = true,
+    RightUpperLeg = true, RightLowerLeg = true, RightFoot = true
+}
+
+local function CreateFillBox(part)
+    local box = Instance.new("BoxHandleAdornment")
+    box.Name = "ChamsFill"
+    box.Adornee = part
+    box.Size = part.Size
+    box.Color3 = Config.Chams.Color
+    box.Transparency = Config.Chams.Transparency
+    box.AlwaysOnTop = true
+    box.ZIndex = 1
+    box.Parent = part
+    return box
 end
 
--- Storage for player highlights
-V.ChamsHighlights = V.ChamsHighlights or {}
-
-local function CreateChamHighlight(character)
-    if not character then return nil end
-    local h = Instance.new("Highlight")
-    h.Parent = character
-    h.FillColor = Config.Chams.Color
-    h.FillTransparency = Config.Chams.FillTransparency
-    h.OutlineTransparency = 1
-    h.Adornee = character
-    return h
-end
-
-local function AddLocalCham()
-    local plr = V.LP
-    if V.ChamsHighlights[plr] then return end
-    if not plr.Character then return end
-    V.ChamsHighlights[plr] = CreateChamHighlight(plr.Character)
-    plr.CharacterAdded:Connect(function(char)
-        if V.ChamsHighlights[plr] then V.ChamsHighlights[plr]:Destroy(); V.ChamsHighlights[plr] = nil end
-        if Config.Chams.Enabled then
-            V.ChamsHighlights[plr] = CreateChamHighlight(char)
+local function AddChams(player)
+    if player == V.LP then return end -- skip local player
+    if not player.Character then return end
+    local character = player.Character
+    if V.ChamsObjects[character] then return end
+    local list = {}
+    for _, part in ipairs(character:GetChildren()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and R15Parts[part.Name] then
+            local box = CreateFillBox(part)
+            if box then table.insert(list, box) end
+        end
+    end
+    if #list > 0 then
+        V.ChamsObjects[character] = list
+    end
+    -- listen for new parts appearing in character (e.g. after respawn)
+    local conn
+    conn = character.ChildAdded:Connect(function(part)
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and R15Parts[part.Name] then
+            if V.ChamsObjects[character]==nil then V.ChamsObjects[character]={} end
+            local box = CreateFillBox(part)
+            table.insert(V.ChamsObjects[character], box)
         end
     end)
+    table.insert(V.ChamsConnections, conn)
 end
 
-local function EnableChams()
-    AddLocalCham()
-end
-
-local function DisableChams()
-    for p, h in pairs(V.ChamsHighlights) do
-        if h then h:Destroy() end
-        V.ChamsHighlights[p] = nil
+local function RemoveChams(character)
+    if V.ChamsObjects[character] then
+        for _, box in ipairs(V.ChamsObjects[character]) do
+            if box and box.Parent then box:Destroy() end
+        end
+        V.ChamsObjects[character] = nil
     end
+end
+
+local function CleanupChams()
+    for character,_ in pairs(V.ChamsObjects) do
+        RemoveChams(character)
+    end
+    for _,conn in ipairs(V.ChamsConnections) do conn:Disconnect() end
+    V.ChamsConnections = {}
 end
 
 local function UpdateChamsVisual()
-    for _, h in pairs(V.ChamsHighlights) do
-        if h then h.FillColor = Config.Chams.Color; h.FillTransparency = Config.Chams.FillTransparency end
+    for _, boxes in pairs(V.ChamsObjects) do
+        for _, box in ipairs(boxes) do
+            if box then
+                box.Color3 = Config.Chams.Color
+                box.Transparency = Config.Chams.Transparency
+            end
+        end
     end
+end
+
+local function EnableChams()
+    -- CRITICAL FIX: Clear existing connections first to prevent stacking
+    CleanupChams()
+    
+    -- apply to existing players
+    for _,plr in ipairs(V.Players:GetPlayers()) do AddChams(plr) end
+    
+    -- setup connections (only once)
+    table.insert(V.ChamsConnections, V.Players.PlayerAdded:Connect(function(p)
+        if p ~= V.LP then
+            table.insert(V.ChamsConnections, p.CharacterAdded:Connect(function()
+                task.wait(1)
+                AddChams(p)
+            end))
+        end
+    end))
+    
+    table.insert(V.ChamsConnections, V.Players.PlayerRemoving:Connect(function(p)
+        if p.Character then RemoveChams(p.Character) end
+    end))
+    
+    -- character respawn for current players
+    for _,p in ipairs(V.Players:GetPlayers()) do
+        if p ~= V.LP then
+            table.insert(V.ChamsConnections, p.CharacterAdded:Connect(function()
+                task.wait(1)
+                AddChams(p)
+            end))
+            table.insert(V.ChamsConnections, p.CharacterRemoving:Connect(function(char)
+                RemoveChams(char)
+            end))
+        end
+    end
+end
+
+local function DisableChams()
+    CleanupChams()
 end
 
 -- UI Elements
@@ -2415,24 +2514,622 @@ ChamsToggle:AddColorPicker('ChamsColor', {
     end
 })
 
-ChamsBox:AddSlider('ChamsFillTrans', {
-    Text = 'Fill Transparency',
-    Default = Config.Chams.FillTransparency,
+ChamsBox:AddSlider('ChamsTransparency', {
+    Text = 'Transparency',
+    Default = Config.Chams.Transparency,
     Min = 0,
     Max = 1,
     Rounding = 2,
     Compact = true,
     Callback = function(v)
-        Config.Chams.FillTransparency = v
+        Config.Chams.Transparency = v
         UpdateChamsVisual()
     end
 })
 
+if Config.Chams.Enabled then
+    EnableChams()
+end
+
+-- TRACERS SYSTEM
+local function ClearTracers()
+    for _,ln in pairs(V.TracerLines) do pcall(function() ln.Visible=false ln:Remove() end) end
+    V.TracerLines = {}
+    if V.TracerLoopConnection then V.TracerLoopConnection:Disconnect() V.TracerLoopConnection=nil end
+end
+
+local function UpdateTracerVisual()
+    for _,ln in pairs(V.TracerLines) do
+        ln.Color = Config.Tracers.Color
+        ln.Transparency = 1-Config.Tracers.Transparency
+        ln.Thickness = Config.Tracers.Thickness
+    end
+end
+
+local function EnableTracers()
+    ClearTracers()
+    V.TracerLoopConnection = V.RS.RenderStepped:Connect(function()
+        local cam = V.Cam
+        local screenSize = cam.ViewportSize
+        local startVector
+        if Config.Tracers.StartPosition == 'Mouse' then
+            local mpos = V.UIS:GetMouseLocation()
+            startVector = Vector2.new(mpos.X, mpos.Y)
+        elseif Config.Tracers.StartPosition == 'Middle' then
+            startVector = Vector2.new(screenSize.X/2, screenSize.Y/2)
+        elseif Config.Tracers.StartPosition == 'Top' then
+            startVector = Vector2.new(screenSize.X/2, 0)
+        else -- Bottom
+            startVector = Vector2.new(screenSize.X/2, screenSize.Y)
+        end
+        -- reuse existing lines if same count
+        local idx=1
+        for _,plr in ipairs(V.Players:GetPlayers()) do
+            if plr~=V.LP and plr.Character and plr.Character:FindFirstChild('HumanoidRootPart') then
+                local part = Config.Tracers.EndPart=='Head' and plr.Character:FindFirstChild('Head') or plr.Character:FindFirstChild('HumanoidRootPart')
+                if part then
+                    local pos,vis = cam:WorldToViewportPoint(part.Position)
+                    if not vis and Config.Tracers.ShowBehind then
+                        local temp = cam.CFrame:PointToObjectSpace(part.Position)
+                        temp = CFrame.Angles(0,0,(math.atan2(temp.Y,temp.X)+math.pi)):VectorToWorldSpace((CFrame.Angles(0,math.rad(89.9),0):VectorToWorldSpace(Vector3.new(0,0,-1))))
+                        pos = cam:WorldToViewportPoint(cam.CFrame:PointToWorldSpace(temp))
+                        vis=true
+                    end
+                    if vis then
+                        local line = V.TracerLines[idx]
+                        if not line then
+                            line = Drawing.new('Line')
+                            V.TracerLines[idx]=line
+                        end
+                        line.Visible=true
+                        line.From=startVector
+                        line.To=Vector2.new(pos.X,pos.Y)
+                        if Config.Tracers.TargetTracerEnabled and V.Target and V.Target.player==plr then
+                            line.Color = Config.Tracers.TargetTracerColor
+                        else
+                            line.Color = Config.Tracers.Color
+                        end
+                        line.Thickness=Config.Tracers.Thickness
+                        line.Transparency=1-Config.Tracers.Transparency
+                        idx=idx+1
+                    end
+                end
+            end
+        end
+        -- hide extra lines
+        for i=idx,#V.TracerLines do
+            if V.TracerLines[i] then V.TracerLines[i].Visible=false end
+        end
+    end)
+end
+
+local function DisableTracers()
+    ClearTracers()
+end
+
+-- UI Elements for Tracers
+local TracerBox = Tabs.Visuals:AddRightGroupbox('Tracers')
+local TracerToggle = TracerBox:AddToggle('TracersEnabled',{
+    Text='Enabled',
+    Default=Config.Tracers.Enabled,
+    Callback=function(v)
+        Config.Tracers.Enabled=v
+        if v then EnableTracers() else DisableTracers() end
+    end
+})
+TracerToggle:AddColorPicker('TracerColor',{
+    Default=Config.Tracers.Color,
+    Title='Color',
+    Transparency=false,
+    Callback=function(c)
+        Config.Tracers.Color=c
+        UpdateTracerVisual()
+    end
+})
+TracerBox:AddSlider('TracerTransparency',{
+    Text='Transparency',
+    Default=Config.Tracers.Transparency,
+    Min=0,Max=1,Rounding=2,Compact=true,
+    Callback=function(v)
+        Config.Tracers.Transparency=v
+        UpdateTracerVisual()
+    end
+})
+TracerBox:AddSlider('TracerThickness',{
+    Text='Thickness',
+    Default=Config.Tracers.Thickness,
+    Min=1,Max=5,Rounding=0,Compact=true,
+    Callback=function(v)
+        Config.Tracers.Thickness=v
+        UpdateTracerVisual()
+    end
+})
+TracerBox:AddDropdown('TracerStart',{
+    Values={'Bottom','Middle','Mouse','Top'},
+    Default=Config.Tracers.StartPosition,
+    Multi=false,
+    Text='Start Pos',
+    Callback=function(v)
+        Config.Tracers.StartPosition=v
+    end
+})
+TracerBox:AddDropdown('TracerEnd',{
+    Values={'Torso','Head'},
+    Default=Config.Tracers.EndPart,
+    Multi=false,
+    Text='End Part',
+    Callback=function(v)
+        Config.Tracers.EndPart=v
+    end
+})
+local TargetTracerToggle = TracerBox:AddToggle('TargetTracerToggle',{
+    Text='TargetTracer',
+    Default=Config.Tracers.TargetTracerEnabled,
+    Callback=function(v)
+        Config.Tracers.TargetTracerEnabled=v
+    end
+})
+TargetTracerToggle:AddColorPicker('TargetTracerColor',{
+    Default=Config.Tracers.TargetTracerColor,
+    Title='Target Color',
+    Transparency=false,
+    Callback=function(c)
+        Config.Tracers.TargetTracerColor=c
+    end
+})
+
+TracerBox:AddToggle('TracerBehind',{
+    Text='Show Behind',
+    Default=Config.Tracers.ShowBehind,
+    Callback=function(v)
+        Config.Tracers.ShowBehind=v
+    end
+})
+
+if Config.Tracers.Enabled then EnableTracers() end
+
+-- BOXES ESP SYSTEM
+local function CreateBoxESP(player)
+    local Box = {
+        Main = Drawing.new("Square"),
+        Outline = Drawing.new("Square"),
+        HealthBar = {
+            Main = Drawing.new("Square"),
+            Outline = Drawing.new("Square")
+        }
+    }
+    
+    -- Main box
+    Box.Main.Visible = false
+    Box.Main.Color = Config.Boxes.Color
+    Box.Main.Thickness = Config.Boxes.Thickness
+    Box.Main.Filled = false
+    Box.Main.ZIndex = 2
+    
+    -- Outline
+    Box.Outline.Visible = false
+    Box.Outline.Color = Color3.new(0, 0, 0)
+    Box.Outline.Thickness = Config.Boxes.Thickness + 0.1
+    Box.Outline.Filled = false
+    Box.Outline.ZIndex = 1
+    
+    -- HealthBar
+    Box.HealthBar.Main.Visible = false
+    Box.HealthBar.Main.Color = Config.Boxes.HealthBarColor
+    Box.HealthBar.Main.Thickness = 1
+    Box.HealthBar.Main.Filled = true
+    Box.HealthBar.Main.ZIndex = 3
+    
+    Box.HealthBar.Outline.Visible = false
+    Box.HealthBar.Outline.Color = Config.Boxes.HealthBarBgColor
+    Box.HealthBar.Outline.Thickness = 1
+    Box.HealthBar.Outline.Filled = true
+    Box.HealthBar.Outline.ZIndex = 2
+    
+    V.BoxesCache[player] = Box
+    return Box
+end
+
+local function UpdateBoxESP(player)
+    if not V.BoxesCache[player] then return end
+    
+    local character = player.Character
+    if not character then
+        V.BoxesCache[player].Main.Visible = false
+        V.BoxesCache[player].Outline.Visible = false
+        V.BoxesCache[player].HealthBar.Main.Visible = false
+        V.BoxesCache[player].HealthBar.Outline.Visible = false
+        return
+    end
+    
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then
+        V.BoxesCache[player].Main.Visible = false
+        V.BoxesCache[player].Outline.Visible = false
+        V.BoxesCache[player].HealthBar.Main.Visible = false
+        V.BoxesCache[player].HealthBar.Outline.Visible = false
+        return
+    end
+    
+    local rootPart = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso")
+    if not rootPart then return end
+    
+    -- Calculate character bounds
+    local minX, maxX = math.huge, -math.huge
+    local minY, maxY = math.huge, -math.huge
+    local validParts = 0
+    
+    for _, part in pairs(character:GetChildren()) do
+        if part:IsA("BasePart") and part ~= rootPart then
+            local partPos, partVis = V.Cam:WorldToViewportPoint(part.Position)
+            if partVis then
+                -- Calculate part bounds with size consideration
+                local partSize = part.Size
+                local halfX = (partSize.X * 50) / partPos.Z -- Scale factor for screen space
+                local halfY = (partSize.Y * 50) / partPos.Z
+                
+                minX = math.min(minX, partPos.X - halfX)
+                maxX = math.max(maxX, partPos.X + halfX)
+                minY = math.min(minY, partPos.Y - halfY)
+                maxY = math.max(maxY, partPos.Y + halfY)
+                validParts = validParts + 1
+            end
+        end
+    end
+    
+    -- Fallback to root part if no valid parts found
+    if validParts == 0 then
+        local position, onScreen = V.Cam:WorldToViewportPoint(rootPart.Position)
+        if not onScreen then
+            V.BoxesCache[player].Main.Visible = false
+            V.BoxesCache[player].Outline.Visible = false
+            V.BoxesCache[player].HealthBar.Main.Visible = false
+            V.BoxesCache[player].HealthBar.Outline.Visible = false
+            return
+        end
+        -- Use fallback sizing
+        local fallbackSize = Vector2.new(
+            math.floor(2200 / position.Z),
+            math.floor(3200 / position.Z)
+        )
+        minX = position.X - fallbackSize.X / 2
+        maxX = position.X + fallbackSize.X / 2
+        minY = position.Y - fallbackSize.Y / 2
+        maxY = position.Y + fallbackSize.Y / 2
+    end
+    
+    -- Add padding
+    local padding = 5
+    minX = minX - padding
+    maxX = maxX + padding
+    minY = minY - padding
+    maxY = maxY + padding
+    
+    -- Calculate final box dimensions
+    local size = Vector2.new(
+        math.floor(maxX - minX),
+        math.floor(maxY - minY)
+    )
+    
+    local boxPosition = Vector2.new(
+        math.floor(minX),
+        math.floor(minY)
+    )
+    
+    -- Update main box
+    V.BoxesCache[player].Main.Visible = Config.Boxes.Enabled
+    V.BoxesCache[player].Main.Position = boxPosition
+    V.BoxesCache[player].Main.Size = size
+    V.BoxesCache[player].Main.Color = Config.Boxes.Color
+    V.BoxesCache[player].Main.Thickness = Config.Boxes.Thickness
+    V.BoxesCache[player].Main.Filled = false
+    
+    V.BoxesCache[player].Outline.Visible = Config.Boxes.Enabled
+    V.BoxesCache[player].Outline.Position = boxPosition - Vector2.new(1, 1)
+    V.BoxesCache[player].Outline.Size = size + Vector2.new(2, 2)
+    
+    -- Update HealthBar
+    if Config.Boxes.HealthBarEnabled and Config.Boxes.Enabled then
+        local healthPercent = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
+        local healthBarHeight = math.floor(size.Y * healthPercent)
+        
+        local healthBarPosition = boxPosition - Vector2.new(Config.Boxes.HealthBarWidth + 4, 0)
+        
+        V.BoxesCache[player].HealthBar.Outline.Visible = true
+        V.BoxesCache[player].HealthBar.Outline.Position = healthBarPosition
+        V.BoxesCache[player].HealthBar.Outline.Size = Vector2.new(Config.Boxes.HealthBarWidth, size.Y + 1)
+        V.BoxesCache[player].HealthBar.Outline.Color = Config.Boxes.HealthBarBgColor
+        
+        V.BoxesCache[player].HealthBar.Main.Visible = true
+        V.BoxesCache[player].HealthBar.Main.Position = healthBarPosition + Vector2.new(0, size.Y - healthBarHeight)
+        V.BoxesCache[player].HealthBar.Main.Size = Vector2.new(Config.Boxes.HealthBarWidth, healthBarHeight)
+        V.BoxesCache[player].HealthBar.Main.Color = Config.Boxes.HealthBarColor
+    else
+        V.BoxesCache[player].HealthBar.Main.Visible = false
+        V.BoxesCache[player].HealthBar.Outline.Visible = false
+    end
+end
+
+local function ClearBoxesESP()
+    for player, box in pairs(V.BoxesCache) do
+        pcall(function()
+            box.Main:Remove()
+            box.Outline:Remove()
+            box.HealthBar.Main:Remove()
+            box.HealthBar.Outline:Remove()
+        end)
+    end
+    V.BoxesCache = {}
+    
+    -- CRITICAL FIX: Disconnect all connections to prevent leaks
+    if V.BoxesConnection then V.BoxesConnection:Disconnect() V.BoxesConnection = nil end
+    for _, conn in pairs(V.BoxesPlayerConnections) do
+        if conn then conn:Disconnect() end
+    end
+    V.BoxesPlayerConnections = {}
+end
+
+local function EnableBoxes()
+    -- CRITICAL FIX: Always clear first to prevent stacking
+    ClearBoxesESP()
+    
+    -- Create boxes for existing players
+    for _, plr in ipairs(V.Players:GetPlayers()) do
+        if plr ~= V.LP then
+            CreateBoxESP(plr)
+        end
+    end
+    
+    -- Update loop (only one connection)
+    V.BoxesConnection = V.RS.Heartbeat:Connect(function()
+        for player, _ in pairs(V.BoxesCache) do
+            UpdateBoxESP(player)
+        end
+    end)
+    
+    -- CRITICAL FIX: Managed player connections
+    V.BoxesPlayerConnections[#V.BoxesPlayerConnections+1] = V.Players.PlayerAdded:Connect(function(player)
+        if player ~= V.LP then
+            CreateBoxESP(player)
+        end
+    end)
+    
+    V.BoxesPlayerConnections[#V.BoxesPlayerConnections+1] = V.Players.PlayerRemoving:Connect(function(player)
+        if V.BoxesCache[player] then
+            pcall(function()
+                V.BoxesCache[player].Main:Remove()
+                V.BoxesCache[player].Outline:Remove()
+                V.BoxesCache[player].HealthBar.Main:Remove()
+                V.BoxesCache[player].HealthBar.Outline:Remove()
+            end)
+            V.BoxesCache[player] = nil
+        end
+    end)
+end
+
+local function DisableBoxes()
+    ClearBoxesESP()
+end
+
+local function UpdateBoxesVisual()
+    for _, box in pairs(V.BoxesCache) do
+        box.Main.Color = Config.Boxes.Color
+        box.Main.Thickness = Config.Boxes.Thickness
+        box.Main.Filled = false
+        box.HealthBar.Main.Color = Config.Boxes.HealthBarColor
+        box.HealthBar.Outline.Color = Config.Boxes.HealthBarBgColor
+    end
+end
+
+-- REMOVED: Global player connections moved to EnableBoxes/DisableBoxes to prevent memory leaks
+
+-- UI Elements for Boxes
+local BoxesBox = Tabs.Visuals:AddRightGroupbox('Boxes')
+local BoxesToggle = BoxesBox:AddToggle('BoxesEnabled', {
+    Text = 'Enabled',
+    Default = Config.Boxes.Enabled,
+    Callback = function(v)
+        Config.Boxes.Enabled = v
+        if v then EnableBoxes() else DisableBoxes() end
+    end
+})
+
+BoxesToggle:AddColorPicker('BoxesColor', {
+    Default = Config.Boxes.Color,
+    Title = 'Box Color',
+    Transparency = false,
+    Callback = function(c)
+        Config.Boxes.Color = c
+        UpdateBoxesVisual()
+    end
+})
+
+
+
+local HealthBarToggle = BoxesBox:AddToggle('HealthBarEnabled', {
+    Text = 'HealthBar',
+    Default = Config.Boxes.HealthBarEnabled,
+    Callback = function(v)
+        Config.Boxes.HealthBarEnabled = v
+    end
+})
+
+HealthBarToggle:AddColorPicker('HealthBarColor', {
+    Default = Config.Boxes.HealthBarColor,
+    Title = 'Health Color',
+    Transparency = false,
+    Callback = function(c)
+        Config.Boxes.HealthBarColor = c
+        UpdateBoxesVisual()
+    end
+})
+
+HealthBarToggle:AddColorPicker('HealthBarBgColor', {
+    Default = Config.Boxes.HealthBarBgColor,
+    Title = 'Health BG',
+    Transparency = false,
+    Callback = function(c)
+        Config.Boxes.HealthBarBgColor = c
+        UpdateBoxesVisual()
+    end
+})
+
+
+
+if Config.Boxes.Enabled then EnableBoxes() end
+
+-- SHOW HITBOX SYSTEM
+local function ShowTargetHitbox()
+    if not V.Target or not V.Target.player or not V.Target.player.Character then
+        if V.CurrentHitbox then
+            V.CurrentHitbox.Transparency = V.OriginalHitboxTransparency or 1
+            V.CurrentHitbox.Material = V.OriginalHitboxMaterial or Enum.Material.Plastic
+            V.CurrentHitbox = nil
+            V.OriginalHitboxTransparency = nil
+            V.OriginalHitboxMaterial = nil
+        end
+        return
+    end
+    
+    local hitbox = V.Target.player.Character:FindFirstChild('Hitbox')
+    if not hitbox then return end
+    
+    -- If new hitbox, save original properties
+    if V.CurrentHitbox ~= hitbox then
+        -- Restore previous hitbox if exists
+        if V.CurrentHitbox then
+            V.CurrentHitbox.Transparency = V.OriginalHitboxTransparency or 1
+            V.CurrentHitbox.Material = V.OriginalHitboxMaterial or Enum.Material.Plastic
+        end
+        
+        -- Set new hitbox
+        V.CurrentHitbox = hitbox
+        V.OriginalHitboxTransparency = hitbox.Transparency
+        V.OriginalHitboxMaterial = hitbox.Material
+    end
+    
+    -- Apply hitbox visualization
+    if Config.Aimbot.ShowHitbox then
+        V.CurrentHitbox.Transparency = 0.6
+        V.CurrentHitbox.Color = Config.Aimbot.HitboxColor
+        V.CurrentHitbox.Material = Enum.Material[Config.Aimbot.HitboxMaterial]
+    else
+        V.CurrentHitbox.Transparency = V.OriginalHitboxTransparency or 1
+        V.CurrentHitbox.Material = V.OriginalHitboxMaterial or Enum.Material.Plastic
+    end
+end
+
+local function DisableHitbox()
+    if V.CurrentHitbox then
+        V.CurrentHitbox.Transparency = V.OriginalHitboxTransparency or 1
+        V.CurrentHitbox.Material = V.OriginalHitboxMaterial or Enum.Material.Plastic
+        V.CurrentHitbox = nil
+        V.OriginalHitboxTransparency = nil
+        V.OriginalHitboxMaterial = nil
+    end
+end
+
+-- UI Elements for ShowHitbox in Aimbot tab
+local HitboxBox = Tabs.Aimbot:AddLeftGroupbox('ShowHitbox')
+local HitboxToggle = HitboxBox:AddToggle('ShowHitboxEnabled', {
+    Text = 'ShowHitbox',
+    Default = Config.Aimbot.ShowHitbox,
+    Callback = function(v)
+        Config.Aimbot.ShowHitbox = v
+        if not v then DisableHitbox() end
+    end
+})
+
+HitboxToggle:AddColorPicker('HitboxColor', {
+    Default = Config.Aimbot.HitboxColor,
+    Title = 'Hitbox Color',
+    Transparency = false,
+    Callback = function(c)
+        Config.Aimbot.HitboxColor = c
+    end
+})
+
+HitboxBox:AddDropdown('HitboxMaterial', {
+    Values = {'Glass', 'Neon', 'ForceField'},
+    Default = Config.Aimbot.HitboxMaterial,
+    Multi = false,
+    Text = 'Material',
+    Callback = function(v)
+        Config.Aimbot.HitboxMaterial = v
+    end
+})
+
+-- SIMPLIFIED GUN EXPLOIT SYSTEM
+local function EquipRevolver()
+    local revolver = V.LP.Backpack:FindFirstChild("[Revolver]") or (V.LP.Character and V.LP.Character:FindFirstChild("[Revolver]"))
+    if revolver and revolver.Parent == V.LP.Backpack then
+        revolver.Parent = V.LP.Character
+        V.CurrentWeapon = revolver
+        return true
+    elseif revolver and revolver.Parent == V.LP.Character then
+        V.CurrentWeapon = revolver
+        return true
+    end
+    return false
+end
+
+local function CheckAutoReload()
+    if not Config.Aimbot.AutoReload or not V.CurrentWeapon then return end
+    
+    local ammo = V.CurrentWeapon:FindFirstChild("Ammo")
+    if ammo and ammo.Value <= 0 then
+        local currentTime = tick()
+        if currentTime - V.LastReloadTime > 0.5 then -- Prevent spam
+            V.LastReloadTime = currentTime
+            -- Trigger reload
+            local reloadEvent = V.CurrentWeapon:FindFirstChild("Reload")
+            if reloadEvent and reloadEvent:IsA("RemoteEvent") then
+                reloadEvent:FireServer()
+            end
+        end
+    end
+end
+
+local function UpdateGunExploit()
+    if not Config.Aimbot.GunExploitEnabled then return end
+    
+    -- Auto equip revolver
+    if Config.Aimbot.AutoEquipRevolver then
+        if not V.CurrentWeapon or not V.CurrentWeapon.Parent then
+            EquipRevolver()
+        end
+    end
+    
+    -- Auto reload
+    CheckAutoReload()
+end
+
+local function DisableGunExploit()
+    if V.AutoReloadConnection then
+        V.AutoReloadConnection:Disconnect()
+        V.AutoReloadConnection = nil
+    end
+    V.CurrentWeapon = nil
+end
+
+-- Character respawn handler for gun exploit
+V.LP.CharacterAdded:Connect(function()
+    V.CurrentWeapon = nil
+    V.LastReloadTime = 0
+end)
+
 -- Main RenderStepped loop for AutoStomp & Highlights
-if V.MainLoopConnection then V.MainLoopConnection:Disconnect() end
+-- CRITICAL FIX: Always disconnect existing connection to prevent stacking
+if V.MainLoopConnection then 
+    V.MainLoopConnection:Disconnect() 
+    V.MainLoopConnection = nil 
+end
+
 V.MainLoopConnection = V.RS.RenderStepped:Connect(function()
     UpdateTargetHighlight()
     UpdateViewTarget()
+    ShowTargetHitbox()
+    UpdateGunExploit()
     -- ApplyAutoStomp уже проверяет наличие цели и флага
     ApplyAutoStomp()
 end)
