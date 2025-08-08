@@ -456,6 +456,7 @@ do
             BackgroundColor3 = ColorPicker.Value;
             BorderColor3 = Library:GetDarkerColor(ColorPicker.Value);
             BorderMode = Enum.BorderMode.Inset;
+            Active = true;
             Size = UDim2.new(0, 28, 0, 14);
             ZIndex = 6;
             Parent = ToggleLabel;
@@ -463,6 +464,12 @@ do
 
         local RelativeOffset = 0;
         local JustOpened = false;
+        local DebugUI = true;
+        local function Debug(msg)
+            if not DebugUI then return end
+            pcall(function() print('[ColorPicker][Debug] ' .. tostring(msg)) end)
+            pcall(function() Library:Notify('[CP] ' .. tostring(msg), 2) end)
+        end
 
         for _, Element in next, Container:GetChildren() do
             if not Element:IsA('UIListLayout') then
@@ -615,6 +622,14 @@ do
             )
         end
 
+        -- Visual hover debug to ensure events reach DisplayFrame
+        Library:GiveSignal(DisplayFrame.MouseEnter:Connect(function()
+            Library:Create(DisplayFrame, { BorderColor3 = Library.AccentColor })
+        end))
+        Library:GiveSignal(DisplayFrame.MouseLeave:Connect(function()
+            Library:Create(DisplayFrame, { BorderColor3 = Library:GetDarkerColor(DisplayFrame.BackgroundColor3) })
+        end))
+
         -- Reposition on movement/resize
         Library:GiveSignal(DisplayFrame:GetPropertyChangedSignal('AbsolutePosition'):Connect(UpdatePickerPosition))
         Library:GiveSignal(DisplayFrame:GetPropertyChangedSignal('AbsoluteSize'):Connect(UpdatePickerPosition))
@@ -696,6 +711,8 @@ do
             UpdatePickerPosition()
             PickerFrameOuter.Visible = true;
             Library.OpenedFrames[PickerFrameOuter] = true;
+            local p = PickerFrameOuter.AbsolutePosition
+            Debug(('Show() -> Visible=true at %d,%d'):format(p.X, p.Y))
             JustOpened = true;
             task.spawn(function()
                 RenderStepped:Wait()
@@ -706,6 +723,7 @@ do
         function ColorPicker:Hide()
             PickerFrameOuter.Visible = false;
             Library.OpenedFrames[PickerFrameOuter] = nil;
+            Debug('Hide() -> Visible=false')
         end;
 
         function ColorPicker:SetValue(HSV)
@@ -761,6 +779,7 @@ do
 
         DisplayFrame.InputBegan:Connect(function(Input)
             if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                Debug(('DisplayFrame clicked, picker visible=%s'):format(tostring(PickerFrameOuter.Visible)))
                 if PickerFrameOuter.Visible then
                     ColorPicker:Hide();
                 else
@@ -776,6 +795,7 @@ do
                 local AbsPos, AbsSize = PickerFrameOuter.AbsolutePosition, PickerFrameOuter.AbsoluteSize;
                 if Mouse.X < AbsPos.X or Mouse.X > AbsPos.X + AbsSize.X
                     or Mouse.Y < AbsPos.Y or Mouse.Y > AbsPos.Y + AbsSize.Y then
+                    Debug('Outside click -> closing picker')
                     ColorPicker:Hide();
                 end;
             end;
