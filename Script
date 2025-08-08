@@ -217,6 +217,24 @@ local V = {
         TempKeybind = nil
     },
     
+    -- Jump Circles state/cache
+    JumpCircles = {
+        Connections = {},
+        -- Текстуры окружностей (первая и вторая)
+        Texture1 = 'rbxassetid://7216856276',
+        Texture2 = 'rbxassetid://6707322206',
+        -- Оставляем старое поле для совместимости (не используется напрямую)
+        Texture = 'rbxassetid://5554832895'
+    },
+
+    -- Textures system state/cache
+    Textures = {
+        Connections = {},
+        Selected = 'Plastic'
+    },
+    -- Список материалов Roblox (заполним при инициализации один раз)
+    MaterialList = nil,
+    
     -- Character parts cache (кешируем части персонажа)
     CharCache = {
         Humanoid = nil,
@@ -224,7 +242,7 @@ local V = {
         Head = nil,
         Torso = nil,
         -- Временные переменные
-        TempChar = nil,
+        TempChar = nil, 
         TempHum = nil,
         TempRoot = nil
     },
@@ -506,6 +524,21 @@ local Config = {
          Intensity = 0.5,
          Threshold = 1.0,
          Size = 24
+     },
+ 
+     -- Jump Circles Settings
+     JumpCircles = {
+         Enabled = false,
+         Color1 = Color3.fromRGB(255, 255, 255),
+         Color2 = Color3.fromRGB(255, 255, 255),
+         Size = 15,
+         LifeAfterMax = 0.3 -- задержка жизни на максимальном размере (сек)
+     },
+ 
+     -- Textures override Settings
+     Textures = {
+         Enabled = false,
+         Selected = 'Plastic'
      },
  
      -- Trails Settings
@@ -4388,6 +4421,296 @@ SelfHighlightBox:AddSlider('SelfHighlightOutlineTrans', {
     end
 })
 
+-----------------------
+-- JUMP CIRCLES SYSTEM
+-----------------------
+-- Вспомогательная функция: создать и анимировать один круг
+local function _CreateAndAnimateJumpCircle(targetPos, targetSize, color, textureId)
+    if not targetPos then return end
+    -- Создаем Part
+    V.InstCache.TempPart = Instance.new('Part')
+    V.InstCache.TempPart.Name = 'SB_JumpCircle'
+    V.InstCache.TempPart.Anchored = true
+    V.InstCache.TempPart.CanCollide = false
+    V.InstCache.TempPart.Material = Enum.Material.SmoothPlastic
+    V.InstCache.TempPart.Transparency = 1
+    V.InstCache.TempPart.Size = Vector3.new(1, 0.05, 1)
+    V.InstCache.TempPart.CFrame = CFrame.new(targetPos)
+    V.InstCache.TempPart.Parent = V.WS
+
+    -- SurfaceGui с ImageLabel (круглая текстура)
+    V.InstCache.TempBillboard = Instance.new('SurfaceGui')
+    V.InstCache.TempBillboard.Name = 'SB_JumpCircleGui'
+    V.InstCache.TempBillboard.Face = Enum.NormalId.Top
+    V.InstCache.TempBillboard.AlwaysOnTop = true
+    V.InstCache.TempBillboard.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+    V.InstCache.TempBillboard.PixelsPerStud = 64
+    V.InstCache.TempBillboard.Parent = V.InstCache.TempPart
+
+    V.InstCache.TempImage = Instance.new('ImageLabel')
+    V.InstCache.TempImage.Name = 'Image'
+    V.InstCache.TempImage.BackgroundTransparency = 1
+    -- нормализуем textureId к формату 'rbxassetid://<digits>'
+    V.Temp.TempString = tostring(textureId or "")
+    V.Temp.TempString2 = V.Temp.TempString:match('%d+') or ''
+    if #V.Temp.TempString2 > 0 then
+        V.Temp.TempString = 'rbxassetid://' .. V.Temp.TempString2
+    end
+    V.InstCache.TempImage.Image = (#V.Temp.TempString > 0 and V.Temp.TempString) or (V.JumpCircles.Texture1 or 'rbxassetid://7216856276')
+    V.InstCache.TempImage.ImageColor3 = color or Color3.new(1,1,1)
+    V.InstCache.TempImage.ImageTransparency = 0.2
+    V.InstCache.TempImage.Size = UDim2.fromScale(1, 1)
+    V.InstCache.TempImage.Parent = V.InstCache.TempBillboard
+
+    -- Анимация расширения и исчезновения без TweenService (чтобы не добавлять сервис)
+    task.spawn(function(part)
+        -- Находим GUI/Image заново, чтобы избежать гонок указателей из InstCache
+        local gui = part and part:FindFirstChild('SB_JumpCircleGui')
+        local img = gui and gui:FindFirstChild('Image')
+        V.Temp.TempNumber = 0
+        V.Temp.TempNumber2 = 0.6 -- длительность
+        while V.Temp.TempNumber < V.Temp.TempNumber2 do
+            V.Temp.TempNumber = V.Temp.TempNumber + V.RS.Heartbeat:Wait()
+            -- интерполяция размера 0 -> targetSize
+            V.Temp.TempNumber3 = math.clamp(V.Temp.TempNumber / V.Temp.TempNumber2, 0, 1)
+            V.Temp.TempNumber4 = targetSize * V.Temp.TempNumber3
+            if part then
+                part.Size = Vector3.new(math.max(0.1, V.Temp.TempNumber4), 0.05, math.max(0.1, V.Temp.TempNumber4))
+            end
+            if img then
+                -- Фаза 1: растём до размера и доводим прозрачность только до 0.8
+                img.ImageTransparency = 0.2 + 0.6 * V.Temp.TempNumber3
+            end
+        end
+        -- Фаза 2: жизнь после достижения максимума
+        local hold = (Config.JumpCircles and Config.JumpCircles.LifeAfterMax) or 0
+        if hold > 0 then
+            local t = 0
+            local startTrans = (img and img.ImageTransparency) or 0.8
+            while t < hold do
+                t = t + V.RS.Heartbeat:Wait()
+                if img then
+                    local k = math.clamp(t / hold, 0, 1)
+                    img.ImageTransparency = startTrans + (1 - startTrans) * k
+                end
+            end
+        end
+        if part then part:Destroy() end
+    end, V.InstCache.TempPart)
+end
+
+local function _OnJump()
+    if not Config.JumpCircles.Enabled then return end
+    if not V.LP or not V.LP.Character then return end
+    V.CharCache.TempRoot = V.LP.Character:FindFirstChild('HumanoidRootPart')
+    if not V.CharCache.TempRoot then return end
+    -- гарантируем наличие текстур по умолчанию
+    V.JumpCircles.Texture1 = V.JumpCircles.Texture1 or 'rbxassetid://7216856276'
+    V.JumpCircles.Texture2 = V.JumpCircles.Texture2 or 'rbxassetid://6707322206'
+    -- Позиция круга
+    V.Temp.TempVector3 = V.CharCache.TempRoot.Position + Vector3.new(0, 0.05, 0)
+    -- Размер круга и запуск только одного круга с первой текстурой
+    V.Temp.TempNumber = Config.JumpCircles.Size
+    _CreateAndAnimateJumpCircle(V.Temp.TempVector3, V.Temp.TempNumber, Config.JumpCircles.Color1, V.JumpCircles.Texture1)
+end
+
+local function _AttachCharacter(char)
+    if not char then return end
+    V.CharCache.TempHum = char:FindFirstChildOfClass('Humanoid')
+    if not V.CharCache.TempHum then return end
+    -- Подписка на смену состояния -> Jumping
+    if V.JumpCircles.Connections["State"] then V.JumpCircles.Connections["State"]:Disconnect() end
+    V.JumpCircles.Connections["State"] = V.CharCache.TempHum.StateChanged:Connect(function(_, new)
+        if new == Enum.HumanoidStateType.Jumping then
+            _OnJump()
+        end
+    end)
+end
+
+function EnableJumpCircles()
+    if not Config.JumpCircles.Enabled then return end
+    -- Подключаемся к текущему персонажу и хендлим респавны
+    if V.JumpCircles.Connections["CharAdded"] then V.JumpCircles.Connections["CharAdded"]:Disconnect() end
+    V.JumpCircles.Connections["CharAdded"] = V.LP.CharacterAdded:Connect(function(char)
+        task.defer(function()
+            _AttachCharacter(char)
+        end)
+    end)
+    if V.LP.Character then _AttachCharacter(V.LP.Character) end
+end
+
+function DisableJumpCircles()
+    for k, conn in pairs(V.JumpCircles.Connections) do
+        if typeof(conn) == 'RBXScriptConnection' then conn:Disconnect() end
+        V.JumpCircles.Connections[k] = nil
+    end
+end
+
+-- UI: Jump circles (левая колонка Visuals)
+local JumpCirclesBox = V.Tabs.Visuals:AddLeftGroupbox('Jump circles')
+local JumpCirclesToggle = JumpCirclesBox:AddToggle('JumpCirclesEnabled', {
+    Text = 'Enabled',
+    Default = Config.JumpCircles.Enabled,
+    Tooltip = 'Одна окружность при прыжке',
+    Callback = function(v)
+        Config.JumpCircles.Enabled = v
+        if v then EnableJumpCircles() else DisableJumpCircles() end
+    end
+})
+
+JumpCirclesToggle:AddColorPicker('JumpCirclesColor1', {
+    Default = Config.JumpCircles.Color1,
+    Title = 'Color',
+    Transparency = false,
+    Callback = function(c)
+        Config.JumpCircles.Color1 = c
+    end
+})
+
+JumpCirclesBox:AddSlider('JumpCirclesSize', {
+    Text = 'Size',
+    Min = 6, Max = 40, Rounding = 0, Compact = true,
+    Default = Config.JumpCircles.Size,
+    Callback = function(v)
+        Config.JumpCircles.Size = v
+    end
+})
+
+-- UI + Logic: Textures (левая колонка Visuals, последняя секция)
+-- Вспомогательные функции для Textures
+local function _IsCharacterDescendant(inst)
+    V.Temp.Part = inst
+    while V.Temp.Part and V.Temp.Part.Parent do
+        if V.Temp.Part:IsA('Model') then
+            V.Temp.TempHum = V.Temp.Part:FindFirstChildOfClass('Humanoid')
+            if V.Temp.TempHum then
+                -- Проверяем, что это персонаж игрока
+                V.Temp.Player = V.Players:GetPlayerFromCharacter(V.Temp.Part)
+                return V.Temp.Player ~= nil
+            end
+        end
+        V.Temp.Part = V.Temp.Part.Parent
+    end
+    return false
+end
+
+local function _ApplyMaterialToPart(part)
+    if not part or not part:IsA('BasePart') then return end
+    if _IsCharacterDescendant(part) then return end
+    -- Сохраняем оригинал один раз
+    V.Textures.Originals = V.Textures.Originals or {}
+    if V.Textures.Originals[part] == nil then
+        V.Textures.Originals[part] = part.Material
+    end
+    -- Применяем выбранный материал
+    V.Temp.TempString = Config.Textures.Selected or 'Plastic'
+    V.Temp.Value = Enum.Material[V.Temp.TempString] or Enum.Material.Plastic
+    part.Material = V.Temp.Value
+end
+
+function EnableTextures()
+    -- Подготовка списка материалов для дропдауна (один раз)
+    if not V.MaterialList then
+        V.Temp.TempTable = {}
+        for _, m in ipairs(Enum.Material:GetEnumItems()) do
+            table.insert(V.Temp.TempTable, m.Name)
+        end
+        V.MaterialList = V.Temp.TempTable
+    end
+    -- Первичный проход по Workspace
+    for _, d in ipairs(V.WS:GetDescendants()) do
+        if d:IsA('BasePart') then
+            _ApplyMaterialToPart(d)
+        end
+    end
+    -- Отслеживаем новые объекты
+    V.Textures.Connections.DescAdded = V.WS.DescendantAdded:Connect(function(d)
+        if d and d:IsA('BasePart') then
+            _ApplyMaterialToPart(d)
+        end
+    end)
+end
+
+function DisableTextures()
+    -- Отключаем коннекты
+    for k, conn in pairs(V.Textures.Connections) do
+        if typeof(conn) == 'RBXScriptConnection' then conn:Disconnect() end
+        V.Textures.Connections[k] = nil
+    end
+    -- Восстанавливаем оригинальные материалы
+    if V.Textures.Originals then
+        for inst, mat in pairs(V.Textures.Originals) do
+            if inst and inst.Parent then
+                inst.Material = mat
+            end
+        end
+    end
+    -- Держим таблицу как пустую, чтобы удовлетворить узкую типизацию Luau
+    V.Textures.Originals = {}
+end
+
+-- UI: Textures
+-- Подготовим список материалов заранее с безопасным фолбэком
+if not V.MaterialList then
+    V.Temp.TempTable = {}
+    local ok, items = pcall(function() return Enum.Material:GetEnumItems() end)
+    if ok and items then
+        for _, m in ipairs(items) do
+            table.insert(V.Temp.TempTable, m.Name)
+        end
+    else
+        -- Фолбэк на базовый набор, если по какой-то причине Enum недоступен
+        V.Temp.TempTable = {'Plastic','Wood','Slate','Concrete','CorrodedMetal','DiamondPlate','Foil','Grass','Ice','Marble','Granite','Brick','Pebble','Sand','Fabric','SmoothPlastic','Metal','WoodPlanks','Cobblestone','Rock','Glass','Asphalt'}
+    end
+    V.MaterialList = V.Temp.TempTable
+end
+
+local TexturesBox = V.Tabs.Visuals:AddLeftGroupbox('Textures')
+local _TexturesToggle = TexturesBox:AddToggle('TexturesEnabled', {
+    Text = 'Enabled',
+    Default = Config.Textures.Enabled,
+    Tooltip = 'Применять материал ко всем объектам, кроме игроков',
+    Callback = function(v)
+        Config.Textures.Enabled = v
+        if v then EnableTextures() else DisableTextures() end
+    end
+})
+
+-- Дропдаун материалов (инициализируется при открытии)
+TexturesBox:AddDropdown('TexturesMaterial', {
+    Values = V.MaterialList,
+    Default = Config.Textures.Selected,
+    Multi = false,
+    Text = 'Material',
+    Callback = function(val)
+        Config.Textures.Selected = val
+        if Config.Textures.Enabled then
+            -- Пере-применяем к уже обработанным (и новым через коннект)
+            if V.Textures.Originals then
+                for inst, _ in pairs(V.Textures.Originals) do
+                    if inst and inst.Parent then
+                        _ApplyMaterialToPart(inst)
+                    end
+                end
+            end
+        end
+    end
+})
+
+-- Автоинициализация, если было включено в конфиг
+if Config.Textures.Enabled then
+    EnableTextures()
+end
+
+JumpCirclesBox:AddSlider('JumpCirclesLifeAfterMax', {
+    Text = 'Жизнь после максимума (сек)',
+    Min = 0, Max = 2, Rounding = 2, Compact = true,
+    Default = Config.JumpCircles.LifeAfterMax,
+    Callback = function(v)
+        Config.JumpCircles.LifeAfterMax = v
+    end
+})
+
 --================ NAME TAGS SYSTEM ===============--
 -- Гарантируем наличие конфигурации
 if not Config.NameTags then
@@ -4642,6 +4965,7 @@ if Config.MaterialChams.Enabled then EnableMaterialChams() end
 if Config.SelfMaterial.Enabled then EnableSelfMaterial() end
 if Config.SelfAccessoryMaterial.Enabled then EnableSelfAccessoryMaterial() end
 if Config.NameTags.Enabled then EnableNameTags() end
+if Config.JumpCircles and Config.JumpCircles.Enabled then EnableJumpCircles() end
 
 -- CONE HAT SYSTEM
 local function InitializeConeHat()
@@ -6574,18 +6898,16 @@ HitboxBox:AddDropdown('HitboxMaterial', {
     Values = {'Glass', 'Neon', 'ForceField'},
     Default = Config.Aimbot.HitboxMaterial,
     Multi = false,
-    Text = 'Material',
+    Text = 'Material',  
     Callback = function(v)
         Config.Aimbot.HitboxMaterial = v
     end
 })
 
------------------------
--- HIT SOUND UI
------------------------
-local HitSoundBox = V.Tabs.Aimbot:AddLeftGroupbox('HitSound')
+V.UI.Boxes = V.UI.Boxes or {}
+V.UI.Boxes.HitSound = V.Tabs.Aimbot:AddLeftGroupbox('HitSound')
 
-local HitSoundToggle = HitSoundBox:AddToggle('HitSoundEnabled', {
+V.UI.TempToggle = V.UI.Boxes.HitSound:AddToggle('HitSoundEnabled', {
     Text = 'Enable HitSound',
     Default = Config.HitSound.Enabled,
     Callback = function(v)
@@ -6593,7 +6915,7 @@ local HitSoundToggle = HitSoundBox:AddToggle('HitSoundEnabled', {
     end
 })
 
-HitSoundBox:AddDropdown('HitSoundSelect', {
+V.UI.Boxes.HitSound:AddDropdown('HitSoundSelect', {
     Values = AvailableHitSounds,
     Default = Config.HitSound.Sound,
     Multi = false,
@@ -6603,7 +6925,7 @@ HitSoundBox:AddDropdown('HitSoundSelect', {
     end
 })
 
-HitSoundBox:AddSlider('HitSoundVolume', {
+V.UI.Boxes.HitSound:AddSlider('HitSoundVolume', {
     Text = 'Volume',
     Min = 0,
     Max = 5,
@@ -6615,7 +6937,7 @@ HitSoundBox:AddSlider('HitSoundVolume', {
     end
 })
 
-HitSoundBox:AddSlider('HitSoundPitch', {
+V.UI.Boxes.HitSound:AddSlider('HitSoundPitch', {
     Text = 'Pitch',
     Min = 0.3,
     Max = 3,
@@ -6627,35 +6949,36 @@ HitSoundBox:AddSlider('HitSoundPitch', {
     end
 })
 
--- форвард-декларация для вызова в Toggle Callback до фактического определения ниже
-local MuteExistingSounds
+-- используем кеш-функцию в V вместо локальной, форвард не требуется
 
-HitSoundBox:AddToggle('HitSoundMuteOriginal', {
+-- Подготовим пространство имён для звуков, чтобы избежать ошибок типизатора
+V.Sound = V.Sound or {}
+V.Sound.MuteExistingSounds = V.Sound.MuteExistingSounds or function() end
+
+V.UI.Boxes.HitSound:AddToggle('HitSoundMuteOriginal', {
     Text = 'Mute Original Sounds',
     Default = Config.HitSound.MuteOriginal,
     Callback = function(v)
         Config.HitSound.MuteOriginal = v
         -- Применяем изменения к существующим звукам
-        if v then
-            MuteExistingSounds()
-        end
+        if v and V.Sound and V.Sound.MuteExistingSounds then V.Sound.MuteExistingSounds() end
     end
 })
 
 -- IMPROVED SOUND MUTING SYSTEM
-local SoundService = game:GetService("SoundService")
-local targetSoundIds = {
+-- Гарантируем список целевых звуков в кеше V.Sound (не расширяем тип Config)
+V.Sound.TargetIds = V.Sound.TargetIds or {
     "rbxassetid://6773912589",
     "6773912589",
     "http://www.roblox.com/asset/?id=6773912589"
 }
 
--- Функция для проверки и блокировки звука
-local function MuteTargetSound(sound)
+-- Функция для проверки и блокировки звука (кешируем в V.Sound, не локальная)
+function V.Sound.MuteTargetSound(sound)
     if not sound:IsA("Sound") then return end
     
     local soundId = tostring(sound.SoundId):lower()
-    for _, targetId in pairs(targetSoundIds) do
+    for _, targetId in pairs(V.Sound.TargetIds) do
         if soundId:find(targetId:lower()) then
             if Config.HitSound.MuteOriginal then
                 pcall(function()
@@ -6677,26 +7000,21 @@ local function MuteTargetSound(sound)
     return false
 end
 
--- Блокируем существующие звуки при включении
-MuteExistingSounds = function()
+-- Блокируем существующие звуки при включении (кешируем в V.Sound)
+function V.Sound.MuteExistingSounds()
     for _, obj in pairs(game:GetDescendants()) do
         if obj:IsA("Sound") then
-            MuteTargetSound(obj)
+            V.Sound.MuteTargetSound(obj)
         end
     end
 end
 
--- Отслеживаем новые звуки
-SoundService.DescendantAdded:Connect(function(obj)
-    if obj:IsA("Sound") then
-        MuteTargetSound(obj)
-    end
-end)
+-- Отслеживание новых звуков через game.DescendantAdded (избегаем отдельного сервиса)
 
 -- Отслеживаем звуки во всей игре
 game.DescendantAdded:Connect(function(obj)
     if obj:IsA("Sound") then
-        MuteTargetSound(obj)
+        V.Sound.MuteTargetSound(obj)
     end
 end)
 
@@ -6772,12 +7090,12 @@ end
 
 -- Оптимизация: счетчик для уменьшения частоты обновления хайлайтов
 V.HighlightUpdateCounter = 0
-local HIGHLIGHT_UPDATE_INTERVAL = 3 -- Обновляем хайлайты каждые 3 кадра вместо каждого
+V.HighlightUpdateInterval = V.HighlightUpdateInterval or 3 -- Обновляем хайлайты каждые 3 кадра вместо каждого
 
 V.MainLoopConnection = V.RS.RenderStepped:Connect(function()
     -- Обновляем хайлайты реже для оптимизации
     V.HighlightUpdateCounter = V.HighlightUpdateCounter + 1
-    if V.HighlightUpdateCounter >= HIGHLIGHT_UPDATE_INTERVAL then
+    if V.HighlightUpdateCounter >= V.HighlightUpdateInterval then
         UpdateTargetHighlight()
         V.HighlightUpdateCounter = 0
     end
@@ -6865,10 +7183,11 @@ function V.Gravity.Toggle(enabled)
     end
 end
 
--- Create Gravity UI in Misc tab
-local GravityBox = V.Tabs.Misc:AddRightGroupbox('Gravity')
+-- Create Gravity UI in Misc tab (без локалов)
+V.UI.Boxes = V.UI.Boxes or {}
+V.UI.Boxes.Gravity = V.Tabs.Misc:AddRightGroupbox('Gravity')
 
-GravityBox:AddToggle('GravityEnabled', {
+V.UI.Boxes.Gravity:AddToggle('GravityEnabled', {
     Text = 'Enable Gravity',
     Default = Config.Gravity.Enabled,
     Tooltip = 'Включить/выключить модуль Gravity',
@@ -6878,7 +7197,7 @@ GravityBox:AddToggle('GravityEnabled', {
     end
 })
 
-GravityBox:AddDropdown('GravityMode', {
+V.UI.Boxes.Gravity:AddDropdown('GravityMode', {
     Values = {'Workspace', 'Impulse', 'LinearVelocity'},
     Default = table.find({'Workspace', 'Impulse', 'LinearVelocity'}, Config.Gravity.Mode) or 1,
     Multi = false,
@@ -6893,7 +7212,7 @@ GravityBox:AddDropdown('GravityMode', {
     end
 })
 
-GravityBox:AddSlider('GravityValue', {
+V.UI.Boxes.Gravity:AddSlider('GravityValue', {
     Text = 'Gravity Value',
     Default = Config.Gravity.Value,
     Min = 0,
