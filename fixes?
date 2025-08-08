@@ -464,7 +464,7 @@ do
 
         local RelativeOffset = 0;
         local JustOpened = false;
-        local DebugUI = true;
+        local DebugUI = false;
         local function Debug(msg)
             if not DebugUI then return end
             pcall(function() print('[ColorPicker][Debug] ' .. tostring(msg)) end)
@@ -692,6 +692,9 @@ do
 
             if ColorPicker.Callback then
                 ColorPicker.Callback(ColorPicker.Value)
+            end;
+            if ColorPicker.Changed then
+                ColorPicker.Changed(ColorPicker.Value)
             end;
         end;
 
