@@ -203,6 +203,89 @@ local V = {
         TempDirection = nil,
         TempAngle = 0,
         TempRadius = 0
+    },
+    
+    -- UI Elements cache (кешируем UI элементы)
+    UI = {
+        -- Groupboxes будут добавляться сюда
+        Boxes = {},
+        -- Временные переменные для UI
+        TempToggle = nil,
+        TempSlider = nil,
+        TempDropdown = nil,
+        TempColorPicker = nil,
+        TempKeybind = nil
+    },
+    
+    -- Character parts cache (кешируем части персонажа)
+    CharCache = {
+        Humanoid = nil,
+        RootPart = nil,
+        Head = nil,
+        Torso = nil,
+        -- Временные переменные
+        TempChar = nil,
+        TempHum = nil,
+        TempRoot = nil
+    },
+    
+    -- Temporary variables cache (временные переменные для функций)
+    Temp = {
+        -- Для CreateCSyncVisualization
+        CSyncBillboard = nil,
+        CSyncImage = nil,
+        CSyncPart = nil,
+        -- Для BulletTracers
+        TracerLine = nil,
+        TracerCircle = nil,
+        -- Для различных проверок
+        Distance = 0,
+        Magnitude = 0,
+        ScreenPos = nil,
+        OnScreen = false,
+        -- Для итераций
+        Player = nil,
+        Character = nil,
+        Part = nil,
+        Index = 0,
+        Value = nil,
+        -- Для ShootAtPlayer
+        WeaponTool = nil,
+        Ammo = nil,
+        Head = nil,
+        Weapon = nil,
+        Handle = nil,
+        HeadPos = nil,
+        Args = nil,
+        ShootEvent = nil,
+        -- Для HitChams
+        Clone = nil,
+        TweenInfo = nil,
+        Tween = nil,
+        Lines = {},
+        Line = nil,
+        Thickness = 0,
+        ParentBone = nil,
+        ChildBone = nil,
+        -- Общие временные переменные
+        TempTable = {},
+        TempString = "",
+        TempNumber = 0,
+        TempBool = false,
+        TempCFrame = nil,
+        TempVector3 = nil,
+        TempColor3 = nil
+    },
+    
+    -- Cache для часто используемых Instance.new (НЕ сами объекты, а временные ссылки)
+    InstCache = {
+        -- Временные ссылки на создаваемые объекты
+        TempPart = nil,
+        TempAttachment = nil,
+        TempBeam = nil,
+        TempHighlight = nil,
+        TempBillboard = nil,
+        TempImage = nil
     }
 }
 
@@ -1552,31 +1635,31 @@ end
 local function CreateCSyncVisualization(position)
     if not Config.Aimbot.CSyncVisualize then return end
     
-    local e = Instance.new("BillboardGui")
-    e.Name = "CSyncVis"
-    e.Size = UDim2.new(2, 0, 2, 0)
-    e.AlwaysOnTop = true
+    V.Temp.CSyncBillboard = Instance.new("BillboardGui")
+    V.Temp.CSyncBillboard.Name = "CSyncVis"
+    V.Temp.CSyncBillboard.Size = UDim2.new(2, 0, 2, 0)
+    V.Temp.CSyncBillboard.AlwaysOnTop = true
     
-    local img3 = Instance.new("ImageLabel", e)
-    img3.Name = "img3"
-    img3.Size = UDim2.new(0.6, 0, 0.6, 0)
-    img3.BackgroundTransparency = 1
-    img3.Image = "rbxassetid://108770683919433"
-    img3.ImageTransparency = 0
-    img3.ImageColor3 = Config.Aimbot.CSyncVisualizeColor
+    V.Temp.CSyncImage = Instance.new("ImageLabel", V.Temp.CSyncBillboard)
+    V.Temp.CSyncImage.Name = "img3"
+    V.Temp.CSyncImage.Size = UDim2.new(0.6, 0, 0.6, 0)
+    V.Temp.CSyncImage.BackgroundTransparency = 1
+    V.Temp.CSyncImage.Image = "rbxassetid://108770683919433"
+    V.Temp.CSyncImage.ImageTransparency = 0
+    V.Temp.CSyncImage.ImageColor3 = Config.Aimbot.CSyncVisualizeColor
     
-    local adorneePart = Instance.new("Part")
-    adorneePart.Size = V.V3(0, 0, 0)
-    adorneePart.Anchored = true
-    adorneePart.Transparency = 1
-    adorneePart.CanCollide = false
-    adorneePart.Position = position
-    adorneePart.Parent = V.WS
+    V.Temp.CSyncPart = Instance.new("Part")
+    V.Temp.CSyncPart.Size = V.V3(0, 0, 0)
+    V.Temp.CSyncPart.Anchored = true
+    V.Temp.CSyncPart.Transparency = 1
+    V.Temp.CSyncPart.CanCollide = false
+    V.Temp.CSyncPart.Position = position
+    V.Temp.CSyncPart.Parent = V.WS
     
-    e.Adornee = adorneePart
-    e.Parent = V.WS
+    V.Temp.CSyncBillboard.Adornee = V.Temp.CSyncPart
+    V.Temp.CSyncBillboard.Parent = V.WS
     
-    return {gui = e, part = adorneePart}
+    return {gui = V.Temp.CSyncBillboard, part = V.Temp.CSyncPart}
 end
 
 local function UpdateCSyncVisualization()
@@ -1887,7 +1970,7 @@ local function HitChams(player)
     cloned.Parent = V.HitChamsFolder
     
     -- Анимация исчезновения
-    local tweenInfo = TweenInfo.new(
+    V.Temp.TweenInfo = TweenInfo.new(
         Config.HitChams.Duration,
         Enum.EasingStyle.Sine,
         Enum.EasingDirection.InOut,
@@ -1897,8 +1980,8 @@ local function HitChams(player)
     
     for _, bodyPart in ipairs(cloned:GetChildren()) do
         if bodyPart:IsA("BasePart") then
-            local tween = V.TweenService:Create(bodyPart, tweenInfo, {Transparency = 1})
-            tween:Play()
+            V.Temp.Tween = V.TweenService:Create(bodyPart, V.Temp.TweenInfo, {Transparency = 1})
+            V.Temp.Tween:Play()
         end
     end
     
@@ -1932,36 +2015,36 @@ local function HitChamsSkeleton(player)
         {"LeftLowerLeg", "LeftFoot"}
     }
     
-    local lines = {}
+    V.Temp.Lines = {}
     
     for _, bonePair in ipairs(bones) do
-        local parentBone = player.Character:FindFirstChild(bonePair[1])
-        local childBone = player.Character:FindFirstChild(bonePair[2])
+        V.Temp.ParentBone = player.Character:FindFirstChild(bonePair[1])
+        V.Temp.ChildBone = player.Character:FindFirstChild(bonePair[2])
         
-        if parentBone and childBone then
-            local line = Instance.new("Part")
-            local thickness = Config.HitChams.SkeletonThickness
-            line.Size = V.V3(thickness, thickness, (parentBone.Position - childBone.Position).Magnitude)
-            line.CFrame = V.CF(parentBone.Position, childBone.Position) * V.CF(0, 0, -line.Size.Z / 2)
-            line.Anchored = true
-            line.CanCollide = false
-            line.Material = Enum.Material[Config.HitChams.Material]
-            line.Color = Config.HitChams.SkeletonColor
-            line.Transparency = Config.HitChams.SkeletonTransparency
-            line.CastShadow = false
-            line.Parent = V.WS
+        if V.Temp.ParentBone and V.Temp.ChildBone then
+            V.Temp.Line = Instance.new("Part")
+            V.Temp.Thickness = Config.HitChams.SkeletonThickness
+            V.Temp.Line.Size = V.V3(V.Temp.Thickness, V.Temp.Thickness, (V.Temp.ParentBone.Position - V.Temp.ChildBone.Position).Magnitude)
+            V.Temp.Line.CFrame = V.CF(V.Temp.ParentBone.Position, V.Temp.ChildBone.Position) * V.CF(0, 0, -V.Temp.Line.Size.Z / 2)
+            V.Temp.Line.Anchored = true
+            V.Temp.Line.CanCollide = false
+            V.Temp.Line.Material = Enum.Material[Config.HitChams.Material]
+            V.Temp.Line.Color = Config.HitChams.SkeletonColor
+            V.Temp.Line.Transparency = Config.HitChams.SkeletonTransparency
+            V.Temp.Line.CastShadow = false
+            V.Temp.Line.Parent = V.WS
             
-            local tweenInfo = TweenInfo.new(Config.HitChams.SkeletonDuration, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-            local tween = V.TweenService:Create(line, tweenInfo, {Transparency = 1})
-            tween:Play()
+            V.Temp.TweenInfo = TweenInfo.new(Config.HitChams.SkeletonDuration, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+            V.Temp.Tween = V.TweenService:Create(V.Temp.Line, V.Temp.TweenInfo, {Transparency = 1})
+            V.Temp.Tween:Play()
             
-            table.insert(lines, line)
+            table.insert(V.Temp.Lines, V.Temp.Line)
         end
     end
     
     -- Удаляем линии после анимации
     task.delay(Config.HitChams.SkeletonDuration, function()
-        for _, line in ipairs(lines) do
+        for _, line in ipairs(V.Temp.Lines) do
             if line and line.Parent then
                 line:Destroy()
             end
@@ -2010,9 +2093,9 @@ local function UpdateTarget(target)
         return
     end
     
-    local humanoidRootPart = target.Character:FindFirstChild("HumanoidRootPart")
-    local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
-    local localRoot = V.LP.Character and V.LP.Character:FindFirstChild("HumanoidRootPart")
+    V.CharCache.TempRoot = target.Character:FindFirstChild("HumanoidRootPart")
+    V.CharCache.TempHum = target.Character:FindFirstChildOfClass("Humanoid")
+    V.CharCache.RootPart = V.LP.Character and V.LP.Character:FindFirstChild("HumanoidRootPart")
     
     -- Отключаем старые обработчики событий цели
     if V.TargetCharacterRemovingConnection then
@@ -2029,13 +2112,13 @@ local function UpdateTarget(target)
     V.Target = { 
         player = target,
         character = target.Character,
-        humanoid = humanoid,
-        humanoidRootPart = humanoidRootPart,
+        humanoid = V.CharCache.TempHum,
+        humanoidRootPart = V.CharCache.TempRoot,
         name = target.Name,
-        distance = localRoot and (humanoidRootPart.Position - localRoot.Position).Magnitude or math.huge,
-        position = humanoidRootPart.Position,
-        cframe = humanoidRootPart.CFrame,
-        velocity = humanoidRootPart.Velocity,
+        distance = V.CharCache.RootPart and (V.CharCache.TempRoot.Position - V.CharCache.RootPart.Position).Magnitude or math.huge,
+        position = V.CharCache.TempRoot.Position,
+        cframe = V.CharCache.TempRoot.CFrame,
+        velocity = V.CharCache.TempRoot.Velocity,
         lastUpdate = tick()
     }
     
@@ -2957,48 +3040,48 @@ end
 function ShootAtPlayer(player)
     if not player or not player.Character or not Config.Aimbot.MagicBullets then return end
     -- Проверка патронов
-    local weaponTool = V.LP.Character and V.LP.Character:FindFirstChildWhichIsA("Tool")
-    if weaponTool then
-        local ammo = weaponTool:FindFirstChild("Ammo")
-        if ammo and ammo.Value <= 0 then return end
+    V.Temp.WeaponTool = V.LP.Character and V.LP.Character:FindFirstChildWhichIsA("Tool")
+    if V.Temp.WeaponTool then
+        V.Temp.Ammo = V.Temp.WeaponTool:FindFirstChild("Ammo")
+        if V.Temp.Ammo and V.Temp.Ammo.Value <= 0 then return end
     end
     -- Не стреляем по мёртвым, но разрешаем стрелять по Grabbed
     if IsPlayerKO(player) then return end
     -- Ждём пока ForceField исчезнет, чтобы bullets прошли
     if player.Character:FindFirstChildOfClass("ForceField") then return end
-    local head = player.Character:FindFirstChild("Head")
-    if not head then return end
-    local character = V.LP.Character
-    if not character then return end
-    local weapon
-    for _, tool in ipairs(character:GetChildren()) do
+    V.Temp.Head = player.Character:FindFirstChild("Head")
+    if not V.Temp.Head then return end
+    V.CharCache.TempChar = V.LP.Character
+    if not V.CharCache.TempChar then return end
+    V.Temp.Weapon = nil
+    for _, tool in ipairs(V.CharCache.TempChar:GetChildren()) do
         if tool:IsA("Tool") then
-            weapon = tool
+            V.Temp.Weapon = tool
             break
         end
     end
-    if not weapon then return end
-    local handle = weapon:FindFirstChild("Handle")
-    if not handle then return end
-    local headPos = head.Position
-    local args = {
+    if not V.Temp.Weapon then return end
+    V.Temp.Handle = V.Temp.Weapon:FindFirstChild("Handle")
+    if not V.Temp.Handle then return end
+    V.Temp.HeadPos = V.Temp.Head.Position
+    V.Temp.Args = {
         "ShootGun",
-        handle,
-        headPos,
-        {headPos, headPos, headPos, headPos, headPos},
-        {head, head, head, head, head},
+        V.Temp.Handle,
+        V.Temp.HeadPos,
+        {V.Temp.HeadPos, V.Temp.HeadPos, V.Temp.HeadPos, V.Temp.HeadPos, V.Temp.HeadPos},
+        {V.Temp.Head, V.Temp.Head, V.Temp.Head, V.Temp.Head, V.Temp.Head},
         {Vector3.new(0,1,0),Vector3.new(0,1,0),Vector3.new(0,1,0),Vector3.new(0,1,0),Vector3.new(0,1,0)},
         {},
         os.clock(),
         99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999,
-        {headPos, headPos, headPos, headPos, headPos},
+        {V.Temp.HeadPos, V.Temp.HeadPos, V.Temp.HeadPos, V.Temp.HeadPos, V.Temp.HeadPos},
         5,
         0.2,
-        headPos
+        V.Temp.HeadPos
     }
-    local shootEvent = V.RSStorage:FindFirstChild("ShootEvent")
-    if shootEvent then
-        shootEvent:FireServer(unpack(args))
+    V.Temp.ShootEvent = V.RSStorage:FindFirstChild("ShootEvent")
+    if V.Temp.ShootEvent then
+        V.Temp.ShootEvent:FireServer(unpack(V.Temp.Args))
     end
 end
 
