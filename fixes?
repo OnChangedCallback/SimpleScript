@@ -462,6 +462,7 @@ do
         });
 
         local RelativeOffset = 0;
+        local JustOpened = false;
 
         for _, Element in next, Container:GetChildren() do
             if not Element:IsA('UIListLayout') then
@@ -695,6 +696,11 @@ do
             UpdatePickerPosition()
             PickerFrameOuter.Visible = true;
             Library.OpenedFrames[PickerFrameOuter] = true;
+            JustOpened = true;
+            task.spawn(function()
+                RenderStepped:Wait()
+                JustOpened = false
+            end)
         end;
 
         function ColorPicker:Hide()
@@ -754,7 +760,7 @@ do
         end);
 
         DisplayFrame.InputBegan:Connect(function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame() then
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
                 if PickerFrameOuter.Visible then
                     ColorPicker:Hide();
                 else
@@ -766,7 +772,7 @@ do
 
         Library:GiveSignal(InputService.InputBegan:Connect(function(Input)
             if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-                if not PickerFrameOuter.Visible then return end
+                if not PickerFrameOuter.Visible or JustOpened then return end
                 local AbsPos, AbsSize = PickerFrameOuter.AbsolutePosition, PickerFrameOuter.AbsoluteSize;
                 if Mouse.X < AbsPos.X or Mouse.X > AbsPos.X + AbsSize.X
                     or Mouse.Y < AbsPos.Y or Mouse.Y > AbsPos.Y + AbsSize.Y then
