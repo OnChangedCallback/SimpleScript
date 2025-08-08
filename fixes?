@@ -433,6 +433,7 @@ do
     function Funcs:AddColorPicker(Idx, Info)
         local ToggleLabel = self.TextLabel;
         local Container = self.Container;
+        local Groupbox = self;
 
         local ColorPicker = {
             Value = Info.Default;
@@ -472,11 +473,11 @@ do
             Name = 'Color';
             BackgroundColor3 = Color3.new(1, 1, 1);
             BorderColor3 = Color3.new(0, 0, 0);
-            Position = UDim2.new(0, 4, 0, 20 + RelativeOffset + 1);
+            Position = UDim2.new(0, 4, 0, 0);
             Size = UDim2.new(1, -13, 0, 253);
             Visible = false;
             ZIndex = 15;
-            Parent = Container.Parent;
+            Parent = Container;
         });
 
         local PickerFrameInner = Library:Create('Frame', {
@@ -681,11 +682,13 @@ do
 
             PickerFrameOuter.Visible = true;
             Library.OpenedFrames[PickerFrameOuter] = true;
+            if Groupbox and Groupbox.Resize then Groupbox:Resize() end
         end;
 
         function ColorPicker:Hide()
             PickerFrameOuter.Visible = false;
             Library.OpenedFrames[PickerFrameOuter] = nil;
+            if Groupbox and Groupbox.Resize then Groupbox:Resize() end
         end;
 
         function ColorPicker:SetValue(HSV)
@@ -2908,7 +2911,7 @@ function Library:CreateWindow(...)
 			CanvasSize = UDim2.new(0, 0, 0, 0);
 			BottomImage = '';
 			TopImage = '';
-			ScrollBarThickness = 4;
+			ScrollBarThickness = 0;
 			ZIndex = 2;
 			Parent = TabFrame;
 		});
@@ -2922,7 +2925,7 @@ function Library:CreateWindow(...)
 			CanvasSize = UDim2.new(0, 0, 0, 0);
 			BottomImage = '';
 			TopImage = '';
-			ScrollBarThickness = 4;
+			ScrollBarThickness = 0;
 			ZIndex = 2;
 			Parent = TabFrame;
 		});
