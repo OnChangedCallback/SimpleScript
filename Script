@@ -387,11 +387,21 @@ local Config = {
          Color = Color3.fromRGB(128, 128, 128)
      },
  
-     -- Shadows Settings
-     Shadows = {
+     -- Bloom Settings
+     Bloom = {
          Enabled = false,
-         DisableShadows = false,
-         Quality = 0.25 -- 0 (hard) to 1 (soft)
+         Intensity = 0.5,
+         Threshold = 1.0,
+         Size = 24
+     },
+ 
+     -- Color Correction Settings
+     ColorCorrection = {
+         Enabled = false,
+         Brightness = 0.0,   -- range: -1 .. 1
+         Contrast = 0.0,     -- range: -1 .. 1
+         Saturation = 0.0,   -- range: -1 .. 1
+         TintColor = Color3.fromRGB(255, 255, 255)
      },
  
      -- Time Settings
@@ -4957,61 +4967,162 @@ AmbientToggle:AddColorPicker('AmbientColor', {
     end
 })
 
--- SHADOWS SETTINGS UI (moved into its own initializer to save top-level locals)
-local OriginalShadowSoftness = game:GetService('Lighting').ShadowSoftness or 0
-local OriginalGlobalShadows = game:GetService('Lighting').GlobalShadows
-
-local function ApplyShadows()
+-- BLOOM SETTINGS UI
+local function ApplyBloom()
     local lighting = game:GetService('Lighting')
-    if not Config.Shadows.Enabled then
-        lighting.ShadowSoftness = OriginalShadowSoftness
-        lighting.GlobalShadows = OriginalGlobalShadows
+    local bloom = lighting:FindFirstChild('SimpleBotBloom')
+    if not Config.Bloom.Enabled then
+        if bloom then bloom.Enabled = false end
         return
     end
-    if Config.Shadows.DisableShadows then
-        lighting.GlobalShadows = false
-    else
-        lighting.GlobalShadows = true
+    if not bloom then
+        bloom = Instance.new('BloomEffect')
+        bloom.Name = 'SimpleBotBloom'
+        bloom.Parent = lighting
     end
-    lighting.ShadowSoftness = Config.Shadows.Quality
+    bloom.Enabled = true
+    bloom.Intensity = Config.Bloom.Intensity
+    bloom.Threshold = Config.Bloom.Threshold
+    bloom.Size = Config.Bloom.Size
 end
 
-local function SetupShadowsUI()
-    ApplyShadows()
-    local ShadowsBox = V.Tabs.Visuals:AddRightGroupbox('Shadows')
-ShadowsBox:AddToggle('ShadowsEnabled', {
+local function SetupBloomUI()
+    ApplyBloom()
+    local BloomBox = V.Tabs.Visuals:AddRightGroupbox('Bloom')
+BloomBox:AddToggle('BloomEnabled', {
     Text = 'Enabled',
-    Default = Config.Shadows.Enabled,
+    Default = Config.Bloom.Enabled,
     Callback = function(v)
-        Config.Shadows.Enabled = v
-        ApplyShadows()
+        Config.Bloom.Enabled = v
+        ApplyBloom()
     end
 })
 
-ShadowsBox:AddToggle('DisableShadows', {
-    Text = 'Disable Shadows',
-    Default = Config.Shadows.DisableShadows,
-    Callback = function(v)
-        Config.Shadows.DisableShadows = v
-        ApplyShadows()
-    end
-})
-
-    ShadowsBox:AddSlider('ShadowQuality', {
-    Text = 'Shadow Quality',
-    Default = Config.Shadows.Quality,
+BloomBox:AddSlider('BloomIntensity', {
+    Text = 'Intensity',
+    Default = Config.Bloom.Intensity,
     Min = 0,
+    Max = 10,
+    Rounding = 2,
+    Compact = false,
+    Callback = function(v)
+        Config.Bloom.Intensity = v
+        ApplyBloom()
+    end
+})
+
+BloomBox:AddSlider('BloomThreshold', {
+    Text = 'Threshold',
+    Default = Config.Bloom.Threshold,
+    Min = 0,
+    Max = 2,
+    Rounding = 2,
+    Compact = false,
+    Callback = function(v)
+        Config.Bloom.Threshold = v
+        ApplyBloom()
+    end
+})
+
+BloomBox:AddSlider('BloomSize', {
+    Text = 'Size',
+    Default = Config.Bloom.Size,
+    Min = 0,
+    Max = 56,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(v)
+        Config.Bloom.Size = v
+        ApplyBloom()
+    end
+})
+end
+
+SetupBloomUI()
+
+-- COLOR CORRECTION SETTINGS UI
+local function ApplyColorCorrection()
+    local lighting = game:GetService('Lighting')
+    local cc = lighting:FindFirstChild('SimpleBotColorCorrection')
+    if not Config.ColorCorrection.Enabled then
+        if cc then cc.Enabled = false end
+        return
+    end
+    if not cc then
+        cc = Instance.new('ColorCorrectionEffect')
+        cc.Name = 'SimpleBotColorCorrection'
+        cc.Parent = lighting
+    end
+    cc.Enabled = true
+    cc.Brightness = Config.ColorCorrection.Brightness
+    cc.Contrast = Config.ColorCorrection.Contrast
+    cc.Saturation = Config.ColorCorrection.Saturation
+    cc.TintColor = Config.ColorCorrection.TintColor
+end
+
+local function SetupColorCorrectionUI()
+    ApplyColorCorrection()
+    local CCBox = V.Tabs.Visuals:AddRightGroupbox('Color Correction')
+    local CCToggle = CCBox:AddToggle('CCEnabled', {
+    Text = 'Enabled',
+    Default = Config.ColorCorrection.Enabled,
+    Callback = function(v)
+        Config.ColorCorrection.Enabled = v
+        ApplyColorCorrection()
+    end
+})
+
+CCBox:AddSlider('CCBrightness', {
+    Text = 'Brightness',
+    Default = Config.ColorCorrection.Brightness,
+    Min = -1,
     Max = 1,
     Rounding = 2,
     Compact = false,
     Callback = function(v)
-        Config.Shadows.Quality = v
-        ApplyShadows()
+        Config.ColorCorrection.Brightness = v
+        ApplyColorCorrection()
     end
-    })
+})
+
+CCBox:AddSlider('CCContrast', {
+    Text = 'Contrast',
+    Default = Config.ColorCorrection.Contrast,
+    Min = -1,
+    Max = 1,
+    Rounding = 2,
+    Compact = false,
+    Callback = function(v)
+        Config.ColorCorrection.Contrast = v
+        ApplyColorCorrection()
+    end
+})
+
+CCBox:AddSlider('CCSaturation', {
+    Text = 'Saturation',
+    Default = Config.ColorCorrection.Saturation,
+    Min = -1,
+    Max = 1,
+    Rounding = 2,
+    Compact = false,
+    Callback = function(v)
+        Config.ColorCorrection.Saturation = v
+        ApplyColorCorrection()
+    end
+})
+
+CCToggle:AddColorPicker('CCTintColor', {
+    Title = 'Tint Color',
+    Transparency = false,
+    Default = Config.ColorCorrection.TintColor,
+    Callback = function(c)
+        Config.ColorCorrection.TintColor = c
+        ApplyColorCorrection()
+    end
+})
 end
 
-SetupShadowsUI()
+SetupColorCorrectionUI()
 
 -- TIME SETTINGS UI (moved into its own initializer as well)
 local OriginalClockTime = game:GetService('Lighting').ClockTime
@@ -5067,6 +5178,13 @@ end
 SetupTimeUI()
 
 -- AURA (Visuals) -----------------------
+-- Ensure Aura config defaults
+Config.Aura = Config.Aura or {}
+if Config.Aura.Enabled == nil then Config.Aura.Enabled = false end
+if not Config.Aura.Type then Config.Aura.Type = 'Health' end
+if not Config.Aura.Color then Config.Aura.Color = Color3.new(1,1,1) end
+if Config.Aura.LightEmission == nil then Config.Aura.LightEmission = 0.6 end
+
 function V.GetBestAuraAttachment(char)
     if not char then return nil end
     local function getAttach(partName, attachName)
@@ -5107,6 +5225,144 @@ function V.UpdateAuraColor()
             e.Color = seq
         end
     end
+end
+
+function V.UpdateAuraLightEmission()
+    local le = Config.Aura and Config.Aura.LightEmission
+    if le == nil then return end
+    for i = 1, #V.AuraEmitters do
+        local e = V.AuraEmitters[i]
+        if e and e:IsA('ParticleEmitter') then
+            e.LightEmission = le
+        end
+    end
+end
+
+-- New: Embers aura based on provided preset, attached across multiple body parts
+function V.CreateEmbersAura(char)
+    if not char then return end
+    local function makeOn(parentInst, props)
+        if not parentInst then return end
+        local pe = Instance.new('ParticleEmitter')
+        for k, v in pairs(props) do pe[k] = v end
+        pe.Parent = parentInst
+        table.insert(V.AuraEmitters, pe)
+    end
+    local function getAttachOrPart(partName, attachName)
+        local part = char:FindFirstChild(partName)
+        if not part then return nil end
+        local att = attachName and part:FindFirstChild(attachName)
+        return att or part
+    end
+
+    local col = V.GetAuraColorSequence()
+
+    -- Common emitter definitions
+    local Embers1 = {
+        Drag = 5,
+        ZOffset = 4,
+        Texture = 'rbxassetid://1084996976',
+        EmissionDirection = Enum.NormalId.Bottom,
+        LightEmission = 1,
+        Name = 'Embers1',
+        Lifetime = NumberRange.new(0.45, 0.9),
+        Speed = NumberRange.new(0.001),
+        Rate = 130,
+        LockedToPart = true,
+        Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0,0,0),
+            NumberSequenceKeypoint.new(0.508,0.04,0.04),
+            NumberSequenceKeypoint.new(1,0,0)
+        })
+    }
+    local Aura1 = {
+        VelocitySpread = 5,
+        RotSpeed = NumberRange.new(-30,30),
+        Texture = 'rbxassetid://13410359900',
+        Color = col,
+        Drag = 5,
+        ZOffset = -1.05,
+        LightEmission = 0.6,
+        Rotation = NumberRange.new(-360,360),
+        Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0,1,0),
+            NumberSequenceKeypoint.new(0.4857,0,0),
+            NumberSequenceKeypoint.new(0.6151,0,0),
+            NumberSequenceKeypoint.new(1,1,0)
+        }),
+        Name = 'Aura1',
+        Lifetime = NumberRange.new(1),
+        Speed = NumberRange.new(0,2),
+        SpreadAngle = Vector2.new(5,5),
+        LockedToPart = true,
+        Rate = 20,
+        Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0,0.25,0),
+            NumberSequenceKeypoint.new(1,0.9,0)
+        })
+    }
+    local Aura2 = {
+        VelocitySpread = 5,
+        RotSpeed = NumberRange.new(-30,30),
+        Texture = 'rbxassetid://13410359900',
+        Color = col,
+        LightEmission = 1,
+        Drag = 5,
+        ZOffset = -1,
+        SpreadAngle = Vector2.new(5,5),
+        Rotation = NumberRange.new(-360,360),
+        Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0,1,0),
+            NumberSequenceKeypoint.new(0.4857,0,0),
+            NumberSequenceKeypoint.new(0.6050,0,0),
+            NumberSequenceKeypoint.new(1,1,0)
+        }),
+        Name = 'Aura2',
+        Lifetime = NumberRange.new(1),
+        Speed = NumberRange.new(0,1),
+        Rate = 18,
+        LockedToPart = true,
+        Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0,0.25,0),
+            NumberSequenceKeypoint.new(1,1.2,0)
+        })
+    }
+
+    -- Head
+    local headParent = getAttachOrPart('Head', 'FaceCenterAttachment')
+    makeOn(headParent, Embers1)
+    makeOn(headParent, Aura1)
+    makeOn(headParent, Aura2)
+
+    -- Left Arm
+    local lArmParent = getAttachOrPart('LeftUpperArm', 'LeftShoulderRigAttachment') or getAttachOrPart('Left Arm', 'LeftShoulderAttachment')
+    makeOn(lArmParent, Embers1)
+    makeOn(lArmParent, Aura1)
+    makeOn(lArmParent, Aura2)
+
+    -- Right Arm
+    local rArmParent = getAttachOrPart('RightUpperArm', 'RightShoulderRigAttachment') or getAttachOrPart('Right Arm', 'RightShoulderAttachment')
+    makeOn(rArmParent, Embers1)
+    makeOn(rArmParent, Aura1)
+    makeOn(rArmParent, Aura2)
+
+    -- Left Leg
+    local lLegParent = getAttachOrPart('LeftFoot', 'LeftFootAttachment') or getAttachOrPart('Left Leg', 'LeftFootAttachment')
+    makeOn(lLegParent, Embers1)
+    makeOn(lLegParent, Aura1)
+    makeOn(lLegParent, Aura2)
+
+    -- Right Leg
+    local rLegParent = getAttachOrPart('RightFoot', 'RightFootAttachment') or getAttachOrPart('Right Leg', 'RightFootAttachment')
+    makeOn(rLegParent, Embers1)
+    makeOn(rLegParent, Aura1)
+    makeOn(rLegParent, Aura2)
+
+    -- Torso/Core
+    local torsoParent = getAttachOrPart('UpperTorso', 'WaistCenterAttachment') or getAttachOrPart('Torso', 'WaistCenterAttachment')
+    makeOn(torsoParent, Embers1)
+    makeOn(torsoParent, Aura1)
+    makeOn(torsoParent, Aura2)
 end
 
 function V.CreateHealthAura(attach)
@@ -5240,10 +5496,14 @@ end
 function V.BuildAuraForCharacter(char)
     V.ClearAura()
     local attach = V.GetBestAuraAttachment(char)
-    if not attach then return end
     if Config.Aura.Type == 'Health' then
+        if not attach then return end
         V.CreateHealthAura(attach)
+    elseif Config.Aura.Type == 'Embers' then
+        V.CreateEmbersAura(char)
     end
+    -- apply current light emission setting to all created emitters
+    V.UpdateAuraLightEmission()
 end
 
 function V.ApplyAura()
@@ -5288,8 +5548,25 @@ function V.SetupAuraUI()
         end
     })
 
+    -- ensure default for light emission
+    if Config.Aura.LightEmission == nil then
+        Config.Aura.LightEmission = 0.6
+    end
+    AuraBox:AddSlider('AuraLightEmission', {
+        Text = 'Light Emission',
+        Default = Config.Aura.LightEmission,
+        Min = 0,
+        Max = 1,
+        Rounding = 2,
+        Compact = false,
+        Callback = function(v)
+            Config.Aura.LightEmission = v
+            V.UpdateAuraLightEmission()
+        end
+    })
+
     AuraBox:AddDropdown('AuraType', {
-        Values = {'Health'},
+        Values = {'Health','Embers'},
         Default = Config.Aura.Type,
         Multi = false,
         Text = 'Type',
