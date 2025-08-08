@@ -14,27 +14,34 @@ local V = {
     WS = workspace,
     RSStorage = game:GetService("ReplicatedStorage"),
     TweenService = game:GetService("TweenService"),
+    TS = game:GetService("TweenService"),
     
     -- Objects
     LP = game:GetService("Players").LocalPlayer,
     Cam = workspace.CurrentCamera,
     ReplicatedStorage = game:GetService("ReplicatedStorage"),
     
-    -- Math/Utility
-    V2 = Vector2.new,
+    -- Utility
     V3 = Vector3.new,
+    V2 = Vector2.new,
     CF = CFrame.new,
+    RGB = Color3.fromRGB,
+    HSV = Color3.fromHSV,
+    INST = Instance.new,
+    TWEEN = function(...) return V.TS:Create(...) end,
+    Drawing = Drawing,
     math = math,
+    tHighlight = nil,
+    
+    -- Target event handlers
+    TargetCharacterRemovingConnection = nil,
+    TargetCharacterAddedConnection = nil,
     
     -- Current target
     Target = nil,
     
     -- Highlight
     CurrentHighlight = nil,
-    
-    -- Target event handlers
-    TargetCharacterRemovingConnection = nil,
-    TargetCharacterAddedConnection = nil,
     
     -- Aimbot prediction
     LastPosition = nil,
@@ -179,7 +186,24 @@ local V = {
     TrailInstance = nil,
     TrailAttach0 = nil,
     TrailAttach1 = nil,
-    _TrailCharConn = nil
+    _TrailCharConn = nil,
+    
+    -- Crosshair cache (группируем в одну таблицу)
+    Crosshair = {
+        Lines = {},
+        Outlines = {},
+        LineOffsets = {},
+        SpinAngle = 0,
+        CursorSize = 0,
+        TextMain = nil,
+        TextAccent = nil,
+        Connection = nil,
+        -- Temp variables
+        TempMousePos = nil,
+        TempDirection = nil,
+        TempAngle = 0,
+        TempRadius = 0
+    }
 }
 
 -- FOLLOW PART INIT (камера всегда следует за FollowPart)
@@ -433,7 +457,24 @@ local Config = {
          Enabled = false,
          Type = 'Health', -- 'Health' (example aura)
          Color = Color3.new(1, 1, 1)
-     }
+     },
+    
+    -- Crosshair Settings
+    Crosshair = {
+        Enabled = false,
+        AlwaysRotating = true,
+        Speed = 5,
+        GapSize = 15,
+        Length = 20,
+        Thickness = 2.5,
+        Sides = 4,
+        Pulse = false,
+        AttachToTarget = false,
+        ShowText = true,
+        CrosshairColor = Color3.fromRGB(255, 255, 255),
+        OutlineColor = Color3.fromRGB(0, 0, 0),
+        TextColor = Color3.fromRGB(255, 255, 255)
+    }
  }
 
 -----------------------
@@ -4646,6 +4687,356 @@ local function UpdateConeHatSides()
     InitializeConeHat()
 end
 
+--================ CROSSHAIR SYSTEM ================--
+local function GenerateCrosshairAngles(numLines)
+    V.Crosshair.LineOffsets = {}
+    local angleIncrement = 2 * math.pi / numLines
+    
+    for i = 1, numLines do
+        V.Crosshair.LineOffsets[i] = (i - 1) * angleIncrement
+    end
+end
+
+local function CreateCrosshair()
+    -- Очищаем старые линии
+    for i = 1, #V.Crosshair.Lines do
+        if V.Crosshair.Lines[i] then
+            V.Crosshair.Lines[i]:Remove()
+        end
+        if V.Crosshair.Outlines[i] then
+            V.Crosshair.Outlines[i]:Remove()
+        end
+    end
+    V.Crosshair.Lines = {}
+    V.Crosshair.Outlines = {}
+    
+    -- Создаем линии прицела
+    for i = 1, Config.Crosshair.Sides do
+        V.Crosshair.Lines[i] = V.Drawing.new("Line")
+        V.Crosshair.Lines[i].Visible = false
+        V.Crosshair.Lines[i].Color = Config.Crosshair.CrosshairColor
+        V.Crosshair.Lines[i].Thickness = Config.Crosshair.Thickness
+        V.Crosshair.Lines[i].ZIndex = 2
+        V.Crosshair.Lines[i].Transparency = 1
+        
+        V.Crosshair.Outlines[i] = V.Drawing.new("Line")
+        V.Crosshair.Outlines[i].Visible = false
+        V.Crosshair.Outlines[i].Color = Config.Crosshair.OutlineColor
+        V.Crosshair.Outlines[i].Thickness = Config.Crosshair.Thickness + 1
+        V.Crosshair.Outlines[i].ZIndex = 1
+        V.Crosshair.Outlines[i].Transparency = 1
+    end
+    
+    -- Генерируем углы
+    GenerateCrosshairAngles(Config.Crosshair.Sides)
+    
+    -- Создаем текст если включен
+    if Config.Crosshair.ShowText then
+        if V.Crosshair.TextMain then V.Crosshair.TextMain:Remove() end
+        V.Crosshair.TextMain = V.Drawing.new("Text")
+        V.Crosshair.TextMain.Outline = true
+        V.Crosshair.TextMain.Text = "simple.lua"
+        V.Crosshair.TextMain.Color = Config.Crosshair.TextColor
+        V.Crosshair.TextMain.Size = 18 -- чуть меньше
+        V.Crosshair.TextMain.Visible = false
+        V.Crosshair.TextMain.Font = 2
+    end
+end
+
+local function UpdateCrosshair()
+    if not Config.Crosshair.Enabled then
+        -- Скрываем прицел
+        for i = 1, #V.Crosshair.Lines do
+            if V.Crosshair.Lines[i] then
+                V.Crosshair.Lines[i].Visible = false
+            end
+            if V.Crosshair.Outlines[i] then
+                V.Crosshair.Outlines[i].Visible = false
+            end
+        end
+        if V.Crosshair.TextMain then
+            V.Crosshair.TextMain.Visible = false
+        end
+        return
+    end
+    
+    -- Выбираем точку привязки: цель или мышь
+    if Config.Crosshair.AttachToTarget and V.Target and V.Target.player and V.Target.player.Character then
+        local char = V.Target.player.Character
+        local hrp = char:FindFirstChild('HumanoidRootPart')
+        if hrp then
+            local sp, onScr = V.Cam:WorldToViewportPoint(hrp.Position)
+            if onScr then
+                V.Crosshair.TempMousePos = Vector2.new(sp.X, sp.Y)
+            else
+                V.Crosshair.TempMousePos = V.UIS:GetMouseLocation()
+            end
+        else
+            V.Crosshair.TempMousePos = V.UIS:GetMouseLocation()
+        end
+    else
+        V.Crosshair.TempMousePos = V.UIS:GetMouseLocation()
+    end
+    
+    -- Обновляем угол вращения
+    if Config.Crosshair.AlwaysRotating then
+        V.Crosshair.SpinAngle = V.Crosshair.SpinAngle + math.rad((Config.Crosshair.Speed * 10) * (1/60))
+    else
+        V.Crosshair.SpinAngle = 0
+    end
+    
+    -- Вычисляем свойства прицела
+    V.Crosshair.TempRadius = Config.Crosshair.Length * 5
+    local Gap = Config.Crosshair.GapSize
+    
+    -- Обновляем размер курсора для эффекта пульсации
+    V.Crosshair.CursorSize = V.Crosshair.CursorSize + 0.025
+    
+    local LocalRadius = V.Crosshair.TempRadius
+    if Config.Crosshair.Pulse then
+        local Dynamic = math.cos(V.Crosshair.CursorSize)
+        LocalRadius = V.Crosshair.TempRadius - (V.Crosshair.TempRadius / 4) * math.abs(Dynamic)
+    end
+    
+    -- Обновляем линии прицела
+    for i = 1, #V.Crosshair.Lines do
+        if V.Crosshair.Lines[i] and V.Crosshair.LineOffsets[i] then
+            V.Crosshair.TempAngle = V.Crosshair.SpinAngle + V.Crosshair.LineOffsets[i]
+            V.Crosshair.TempDirection = Vector2.new(
+                math.cos(V.Crosshair.TempAngle),
+                math.sin(V.Crosshair.TempAngle)
+            ).Unit
+            
+            -- Устанавливаем позиции линий
+            V.Crosshair.Lines[i].From = V.Crosshair.TempMousePos + V.Crosshair.TempDirection * Gap
+            V.Crosshair.Lines[i].To = V.Crosshair.Lines[i].From + V.Crosshair.TempDirection * LocalRadius
+            V.Crosshair.Lines[i].Visible = true
+            V.Crosshair.Lines[i].Color = Config.Crosshair.CrosshairColor
+            V.Crosshair.Lines[i].Thickness = Config.Crosshair.Thickness
+            
+            -- Устанавливаем позиции контуров
+            if V.Crosshair.Outlines[i] then
+                V.Crosshair.Outlines[i].From = V.Crosshair.TempMousePos + V.Crosshair.TempDirection * (Gap - 1)
+                V.Crosshair.Outlines[i].To = V.Crosshair.Lines[i].From + V.Crosshair.TempDirection * (LocalRadius + 1)
+                V.Crosshair.Outlines[i].Visible = true
+                V.Crosshair.Outlines[i].Color = Config.Crosshair.OutlineColor
+                V.Crosshair.Outlines[i].Thickness = Config.Crosshair.Thickness + 1
+            end
+        end
+    end
+    
+    -- Обновляем текст если включен
+    if Config.Crosshair.ShowText and V.Crosshair.TextMain then
+        local yOffset = (Config.Crosshair.Length * 5) + Config.Crosshair.GapSize + 15
+        local tb = V.Crosshair.TextMain.TextBounds or Vector2.new(0, 0)
+        V.Crosshair.TextMain.Position = Vector2.new(
+            V.Crosshair.TempMousePos.X - (tb.X / 2),
+            V.Crosshair.TempMousePos.Y + yOffset
+        )
+        V.Crosshair.TextMain.Visible = true
+        V.Crosshair.TextMain.Color = Config.Crosshair.TextColor
+        
+        -- Применяем эффект пульсации
+        if Config.Crosshair.Pulse then
+            local sine = math.abs(math.sin(tick() * 4))
+            V.Crosshair.TextMain.Transparency = sine
+        else
+            V.Crosshair.TextMain.Transparency = 1
+        end
+    end
+end
+
+local function EnableCrosshair()
+    CreateCrosshair()
+    if V.Crosshair.Connection then
+        V.Crosshair.Connection:Disconnect()
+    end
+    V.Crosshair.Connection = V.RS.RenderStepped:Connect(UpdateCrosshair)
+end
+
+local function DisableCrosshair()
+    if V.Crosshair.Connection then
+        V.Crosshair.Connection:Disconnect()
+        V.Crosshair.Connection = nil
+    end
+    UpdateCrosshair() -- Вызываем для скрытия
+end
+
+local function UpdateCrosshairSides()
+    if Config.Crosshair.Enabled then
+        CreateCrosshair()
+    end
+end
+
+-- CROSSHAIR UI
+local CrosshairBox = V.Tabs.Visuals:AddLeftGroupbox('Crosshair')
+
+-- Toggle для включения
+local CrosshairToggle = CrosshairBox:AddToggle('CrosshairEnabled', {
+    Text = 'Enabled',
+    Default = Config.Crosshair.Enabled,
+    Callback = function(v)
+        Config.Crosshair.Enabled = v
+        if v then
+            EnableCrosshair()
+        else
+            DisableCrosshair()
+        end
+    end
+})
+
+-- Color picker для цвета прицела
+CrosshairToggle:AddColorPicker('CrosshairColor', {
+    Default = Config.Crosshair.CrosshairColor,
+    Title = 'Color',
+    Callback = function(c)
+        Config.Crosshair.CrosshairColor = c
+    end
+})
+
+-- Слайдер для длины
+CrosshairBox:AddSlider('CrosshairLength', {
+    Text = 'Length',
+    Min = 5,
+    Max = 50,
+    Rounding = 0,
+    Compact = true,
+    Default = Config.Crosshair.Length,
+    Callback = function(v)
+        Config.Crosshair.Length = v
+    end
+})
+
+-- Слайдер для зазора
+CrosshairBox:AddSlider('CrosshairGapSize', {
+    Text = 'Gap Size',
+    Min = 0,
+    Max = 50,
+    Rounding = 0,
+    Compact = true,
+    Default = Config.Crosshair.GapSize,
+    Callback = function(v)
+        Config.Crosshair.GapSize = v
+    end
+})
+
+-- Слайдер для толщины
+CrosshairBox:AddSlider('CrosshairThickness', {
+    Text = 'Thickness',
+    Min = 1,
+    Max = 10,
+    Rounding = 1,
+    Compact = true,
+    Default = Config.Crosshair.Thickness,
+    Callback = function(v)
+        Config.Crosshair.Thickness = v
+    end
+})
+
+-- Слайдер для количества сторон
+CrosshairBox:AddSlider('CrosshairSides', {
+    Text = 'Sides',
+    Min = 2,
+    Max = 8,
+    Rounding = 0,
+    Compact = true,
+    Default = Config.Crosshair.Sides,
+    Callback = function(v)
+        Config.Crosshair.Sides = v
+        UpdateCrosshairSides()
+    end
+})
+
+-- Toggle для вращения
+CrosshairBox:AddToggle('CrosshairRotating', {
+    Text = 'Always Rotating',
+    Default = Config.Crosshair.AlwaysRotating,
+    Callback = function(v)
+        Config.Crosshair.AlwaysRotating = v
+    end
+})
+
+-- Слайдер для скорости вращения
+CrosshairBox:AddSlider('CrosshairSpeed', {
+    Text = 'Rotation Speed',
+    Min = 0,
+    Max = 20,
+    Rounding = 1,
+    Compact = true,
+    Default = Config.Crosshair.Speed,
+    Callback = function(v)
+        Config.Crosshair.Speed = v
+    end
+})
+
+-- Toggle для пульсации
+CrosshairBox:AddToggle('CrosshairPulse', {
+    Text = 'Pulse Effect',
+    Default = Config.Crosshair.Pulse,
+    Callback = function(v)
+        Config.Crosshair.Pulse = v
+    end
+})
+
+-- Toggle для привязки к цели
+CrosshairBox:AddToggle('CrosshairAttach', {
+    Text = 'Attach to target',
+    Default = Config.Crosshair.AttachToTarget,
+    Callback = function(v)
+        Config.Crosshair.AttachToTarget = v
+    end
+})
+
+-- Toggle для текста
+local CrosshairTextToggle = CrosshairBox:AddToggle('CrosshairShowText', {
+    Text = 'Show Text',
+    Default = Config.Crosshair.ShowText,
+    Callback = function(v)
+        Config.Crosshair.ShowText = v
+        if v and not V.Crosshair.TextMain then
+            CreateCrosshair()
+        elseif not v and V.Crosshair.TextMain then
+            V.Crosshair.TextMain.Visible = false
+        end
+    end
+})
+
+-- Color picker для цвета текста
+CrosshairTextToggle:AddColorPicker('CrosshairTextColor', {
+    Default = Config.Crosshair.TextColor,
+    Title = 'Text Color',
+    Callback = function(c)
+        Config.Crosshair.TextColor = c
+    end
+})
+
+-- Toggle для контура
+local CrosshairOutlineToggle = CrosshairBox:AddToggle('CrosshairOutline', {
+    Text = 'Show Outline',
+    Default = true,
+    Callback = function(v)
+        for i = 1, #V.Crosshair.Outlines do
+            if V.Crosshair.Outlines[i] then
+                V.Crosshair.Outlines[i].Visible = v and Config.Crosshair.Enabled
+            end
+        end
+    end
+})
+
+-- Color picker для цвета контура
+CrosshairOutlineToggle:AddColorPicker('CrosshairOutlineColor', {
+    Default = Config.Crosshair.OutlineColor,
+    Title = 'Outline Color',
+    Callback = function(c)
+        Config.Crosshair.OutlineColor = c
+    end
+})
+
+-- Инициализация при загрузке
+if Config.Crosshair.Enabled then
+    EnableCrosshair()
+end
+
 -- CONE HAT UI
 local ConeHatBox = V.Tabs.Visuals:AddLeftGroupbox('Cone Hat')
 
@@ -6228,8 +6619,10 @@ end)
 
 -- SIMPLIFIED GUN EXPLOIT SYSTEM
 
--- SIMPLIFIED GUN EXPLOIT SYSTEM
-local function EquipRevolver()
+-- Переводим функции в V.Gun, чтобы не плодить локальные переменные в верхнем скоупе
+V.Gun = V.Gun or {}
+
+function V.Gun.EquipRevolver()
     local revolver = V.LP.Backpack:FindFirstChild("[Revolver]") or (V.LP.Character and V.LP.Character:FindFirstChild("[Revolver]"))
     if revolver and revolver.Parent == V.LP.Backpack then
         revolver.Parent = V.LP.Character
@@ -6242,7 +6635,7 @@ local function EquipRevolver()
     return false
 end
 
-local function CheckAutoReload()
+function V.Gun.CheckAutoReload()
     if not Config.Aimbot.AutoReload or not V.CurrentWeapon then return end
     
     local ammo = V.CurrentWeapon:FindFirstChild("Ammo")
@@ -6259,21 +6652,21 @@ local function CheckAutoReload()
     end
 end
 
-local function UpdateGunExploit()
+function V.Gun.Update()
     if not Config.Aimbot.GunExploitEnabled then return end
     
     -- Auto equip revolver
     if Config.Aimbot.AutoEquipRevolver then
         if not V.CurrentWeapon or not V.CurrentWeapon.Parent then
-            EquipRevolver()
+            V.Gun.EquipRevolver()
         end
     end
     
     -- Auto reload
-    CheckAutoReload()
+    V.Gun.CheckAutoReload()
 end
 
-local function DisableGunExploit()
+function V.Gun.Disable()
     if V.AutoReloadConnection then
         V.AutoReloadConnection:Disconnect()
         V.AutoReloadConnection = nil
@@ -6308,7 +6701,7 @@ V.MainLoopConnection = V.RS.RenderStepped:Connect(function()
     
     UpdateViewTarget()
     ShowTargetHitbox()
-    UpdateGunExploit()
+    V.Gun.Update()
     -- ApplyAutoStomp уже проверяет наличие цели и флага
     ApplyAutoStomp()
     -- Обрабатываем отложенные HitChams эффекты
@@ -6335,20 +6728,23 @@ end
 -- GRAVITY MODULE
 -----------------------
 
+-- Переводим функции и состояние в V.Gravity
+V.Gravity = V.Gravity or { Changed = false, Connection = nil, Original = nil }
+
 -- Gravity functions
-local function EnableGravity()
+function V.Gravity.Enable()
     if Config.Gravity.Mode == 'Workspace' then
-        V.OriginalGravity = V.WS.Gravity
+        V.Gravity.Original = V.WS.Gravity
         V.WS.Gravity = Config.Gravity.Value
-        V.GravityConnection = V.WS:GetPropertyChangedSignal('Gravity'):Connect(function()
-            if V.GravityChanged then return end
-            V.GravityChanged = true
-            V.OriginalGravity = V.WS.Gravity
+        V.Gravity.Connection = V.WS:GetPropertyChangedSignal('Gravity'):Connect(function()
+            if V.Gravity.Changed then return end
+            V.Gravity.Changed = true
+            V.Gravity.Original = V.WS.Gravity
             V.WS.Gravity = Config.Gravity.Value
-            V.GravityChanged = false
+            V.Gravity.Changed = false
         end)
     else
-        V.GravityConnection = V.RS.PreSimulation:Connect(function(dt)
+        V.Gravity.Connection = V.RS.PreSimulation:Connect(function(dt)
             if V.LP.Character and V.LP.Character:FindFirstChild('Humanoid') and V.LP.Character:FindFirstChild('HumanoidRootPart') then
                 local humanoid = V.LP.Character.Humanoid
                 local root = V.LP.Character.HumanoidRootPart
@@ -6365,24 +6761,24 @@ local function EnableGravity()
     end
 end
 
-local function DisableGravity()
-    if V.GravityConnection then
-        V.GravityConnection:Disconnect()
-        V.GravityConnection = nil
+function V.Gravity.Disable()
+    if V.Gravity.Connection then
+        V.Gravity.Connection:Disconnect()
+        V.Gravity.Connection = nil
     end
     
-    if V.OriginalGravity then
-        V.WS.Gravity = V.OriginalGravity
-        V.OriginalGravity = nil
+    if V.Gravity.Original then
+        V.WS.Gravity = V.Gravity.Original
+        V.Gravity.Original = nil
     end
 end
 
 -- Gravity toggle handler
-local function ToggleGravity(enabled)
+function V.Gravity.Toggle(enabled)
     if enabled then
-        EnableGravity()
+        V.Gravity.Enable()
     else
-        DisableGravity()
+        V.Gravity.Disable()
     end
 end
 
@@ -6395,7 +6791,7 @@ GravityBox:AddToggle('GravityEnabled', {
     Tooltip = 'Включить/выключить модуль Gravity',
     Callback = function(v)
         Config.Gravity.Enabled = v
-        ToggleGravity(v)
+        V.Gravity.Toggle(v)
     end
 })
 
@@ -6408,8 +6804,8 @@ GravityBox:AddDropdown('GravityMode', {
     Callback = function(v)
         Config.Gravity.Mode = v
         if Config.Gravity.Enabled then
-            DisableGravity()
-            EnableGravity()
+            V.Gravity.Disable()
+            V.Gravity.Enable()
         end
     end
 })
