@@ -1,6 +1,6 @@
 local httpService = game:GetService('HttpService')
 local ThemeManager = {} do
-	ThemeManager.Folder = 'SimpleBoThemes'
+	ThemeManager.Folder = 'SimpleBotThemes'
 	-- if not isfolder(ThemeManager.Folder) then makefolder(ThemeManager.Folder) end
 
 	ThemeManager.Library = nil
@@ -94,8 +94,22 @@ local ThemeManager = {} do
 		groupbox:AddDropdown('ThemeManager_ThemeList', { Text = 'Theme list', Values = ThemesArray, Default = 1 })
 
 		groupbox:AddButton('Set as default', function()
-			self:SaveDefault(Options.ThemeManager_ThemeList.Value)
-			self.Library:Notify(string.format('Set default theme to %q', Options.ThemeManager_ThemeList.Value))
+			local toSave
+            -- Prefer custom theme if selected
+            if Options.ThemeManager_CustomThemeList and Options.ThemeManager_CustomThemeList.Value and Options.ThemeManager_CustomThemeList.Value ~= '' then
+                toSave = Options.ThemeManager_CustomThemeList.Value
+            end
+            -- Otherwise use built-in selected theme
+            if not toSave and Options.ThemeManager_ThemeList and Options.ThemeManager_ThemeList.Value and Options.ThemeManager_ThemeList.Value ~= '' then
+                toSave = Options.ThemeManager_ThemeList.Value
+            end
+
+            if toSave then
+                self:SaveDefault(toSave)
+                self.Library:Notify(string.format('Set default theme to %q', toSave))
+            else
+                self.Library:Notify('No theme selected to set as default', 3)
+            end
 		end)
 
 		Options.ThemeManager_ThemeList:OnChanged(function()
