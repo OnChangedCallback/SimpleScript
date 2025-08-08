@@ -173,7 +173,13 @@ local V = {
         soundId = "rbxassetid://2783295579",
         collisionDisabled = false,
         targetPlayer = nil
-    }
+    },
+    
+    -- Trails
+    TrailInstance = nil,
+    TrailAttach0 = nil,
+    TrailAttach1 = nil,
+    _TrailCharConn = nil
 }
 
 -- FOLLOW PART INIT (камера всегда следует за FollowPart)
@@ -395,6 +401,17 @@ local Config = {
          Size = 24
      },
  
+     -- Trails Settings
+     Trails = {
+         Enabled = false,
+         Color = Color3.fromRGB(255, 0, 0),
+         Transparency = 0.5,
+         Length = 10,
+         Width = 2,
+         MinLength = 0.1,
+         FaceCamera = true
+     },
+
      -- Color Correction Settings
      ColorCorrection = {
          Enabled = false,
@@ -431,6 +448,191 @@ local function IsVisible(targetRoot)
     V.RaycastParams.FilterType = Enum.RaycastFilterType.Blacklist
     
     return V.WS:Raycast(V.Cam.CFrame.Position, (targetRoot.Position - V.Cam.CFrame.Position), V.RaycastParams) == nil
+end
+
+-- Predeclare for Luau type checker
+V.FrozenTemplate = V.FrozenTemplate or nil
+-- New: Frozen aura built from provided model data (used as a template)
+function V._GetFrozenTemplate()
+    if V.FrozenTemplate and V.FrozenTemplate.Parent == nil then
+        return V.FrozenTemplate
+    end
+    if V.FrozenTemplate and V.FrozenTemplate.Parent then
+        return V.FrozenTemplate
+    end
+
+    local partsWithId = {}
+    local awaitRef = {}
+
+    local root = {
+    	ID = 0;
+    	Type = "Model";
+    	Properties = {
+    		Name = "Frozen Dummy";
+    		PrimaryPart = "_R:27_";
+    	};
+    	Children = {
+    		{
+    			ID = 1;
+    			Type = "MeshPart";
+    			Properties = {
+    				MeshId = "rbxassetid://11697594553";
+    				Reflectance = 0.44999998807907104;
+    				Position = Vector3.new(-29.0831298828125,5.501658916473389,119.00080871582031);
+    				Name = "Head";
+    				CFrame = CFrame.new(-29.0831298828125,5.501658916473389,119.00080871582031,1,0,0,0,1,0,0,0,1);
+    				Material = Enum.Material.SmoothPlastic;
+    				Size = Vector3.new(1.1998358964920044,1.2044157981872559,1.1998361349105835);
+    			};
+    			Children = {
+    				{ ID = 2; Type = "Decal"; Properties = { Name = "face"; Texture = "rbxasset://textures/face.png"; }; Children = {} },
+    				{ ID = 3; Type = "Attachment"; Properties = { Name = "FaceCenterAttachment"; }; Children = {} },
+    				{ ID = 4; Type = "Attachment"; Properties = { CFrame = CFrame.new(0,0,-0.5974688529968262,1,0,0,0,1,0,0,0,1); Name = "FaceFrontAttachment"; Position = Vector3.new(0,0,-0.5974688529968262); }; Children = {} },
+    				{ ID = 5; Type = "Attachment"; Properties = { CFrame = CFrame.new(0,0.5974687933921814,0,1,0,0,0,1,0,0,0,1); Name = "HairAttachment"; Position = Vector3.new(0,0.5974687933921814,0); }; Children = {} },
+    				{ ID = 6; Type = "Attachment"; Properties = { CFrame = CFrame.new(0,0.5974687933921814,0,1,0,0,0,1,0,0,0,1); Name = "HatAttachment"; Position = Vector3.new(0,0.5974687933921814,0); }; Children = {} },
+    				{ ID = 7; Type = "ParticleEmitter"; Properties = { VelocitySpread = 5; Texture = "rbxassetid://13410359900"; RotSpeed = NumberRange.new(-30,30); LightEmission = 1; Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(79/255,232/255,1)),ColorSequenceKeypoint.new(1,Color3.new(79/255,232/255,1))}); Drag = 5; ZOffset = -1; SpreadAngle = Vector2.new(5,5); Rotation = NumberRange.new(-360,360); Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1,0),NumberSequenceKeypoint.new(0.4860000014305115,0.6000000238418579,0),NumberSequenceKeypoint.new(0.6050000190734863,0.6000000238418579,0),NumberSequenceKeypoint.new(1,1,0)}); Name = "Aura"; Lifetime = NumberRange.new(0.6000000238418579); Speed = NumberRange.new(0,1); Rate = 25; LockedToPart = true; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0.3125,0),NumberSequenceKeypoint.new(1,1.4375001192092896,0)}); }; Children = {} },
+    				{ ID = 8; Type = "ParticleEmitter"; Properties = { Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(14/51,84/85,1)),ColorSequenceKeypoint.new(1,Color3.new(14/51,84/85,1))}); LockedToPart = true; ZOffset = 3; Texture = "rbxassetid://13768810492"; Name = "Stars"; Lifetime = NumberRange.new(0.20000000298023224,0.30000001192092896); Speed = NumberRange.new(0); LightEmission = 1; Rate = 5; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0,0),NumberSequenceKeypoint.new(0.5009999871253967,0.5,0.5),NumberSequenceKeypoint.new(1,0,0)}); }; Children = {} },
+    			};
+    		};
+    		{ ID = 9; Type = "MeshPart"; Properties = { MeshId = "rbxassetid://11697594395"; Reflectance = 0.44999998807907104; Name = "Left Arm"; CanCollide = false; Material = Enum.Material.SmoothPlastic; CFrame = CFrame.new(-30.5831298828125,4.001658916473389,119.00080871582031,1,0,0,0,1,0,0,0,1); Position = Vector3.new(-30.5831298828125,4.001658916473389,119.00080871582031); Size = Vector3.new(1.0016579627990723,2.0033159255981445,1.0016580820083618); }; Children = {
+    			{ ID = 10; Type = "Attachment"; Properties = { CFrame = CFrame.new(0,-1,0,1,0,0,0,1,0,0,0,1); Name = "LeftGripAttachment"; Position = Vector3.new(0,-1,0); }; Children = {} },
+    			{ ID = 11; Type = "Attachment"; Properties = { CFrame = CFrame.new(0,1,0,1,0,0,0,1,0,0,0,1); Name = "LeftShoulderAttachment"; Position = Vector3.new(0,1,0); }; Children = {} },
+    			{ ID = 12; Type = "ParticleEmitter"; Properties = { VelocitySpread = 5; Texture = "rbxassetid://13410359900"; RotSpeed = NumberRange.new(-30,30); LightEmission = 1; Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(79/255,232/255,1)),ColorSequenceKeypoint.new(1,Color3.new(79/255,232/255,1))}); Drag = 5; ZOffset = -1; SpreadAngle = Vector2.new(5,5); Rotation = NumberRange.new(-360,360); Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1,0),NumberSequenceKeypoint.new(0.4860000014305115,0.6000000238418579,0),NumberSequenceKeypoint.new(0.6050000190734863,0.6000000238418579,0),NumberSequenceKeypoint.new(1,1,0)}); Name = "Aura"; Lifetime = NumberRange.new(0.6000000238418579); Speed = NumberRange.new(0,1); Rate = 25; LockedToPart = true; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0.3125,0),NumberSequenceKeypoint.new(1,1.4375001192092896,0)}); }; Children = {} },
+    			{ ID = 13; Type = "ParticleEmitter"; Properties = { Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(14/51,84/85,1)),ColorSequenceKeypoint.new(1,Color3.new(14/51,84/85,1))}); LockedToPart = true; ZOffset = 3; Texture = "rbxassetid://13768810492"; Name = "Stars"; Lifetime = NumberRange.new(0.20000000298023224,0.30000001192092896); Speed = NumberRange.new(0); LightEmission = 1; Rate = 5; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0,0),NumberSequenceKeypoint.new(0.5009999871253967,0.5,0.5),NumberSequenceKeypoint.new(1,0,0)}); }; Children = {} },
+    		}; };
+    		{ ID = 14; Type = "MeshPart"; Properties = { MeshId = "rbxassetid://11697594244"; Reflectance = 0.44999998807907104; Name = "Left Leg"; CanCollide = false; Material = Enum.Material.SmoothPlastic; CFrame = CFrame.new(-29.5831298828125,2.0016589164733887,119.00080871582031,1,0,0,0,1,0,0,0,1); Position = Vector3.new(-29.5831298828125,2.0016589164733887,119.00080871582031); Size = Vector3.new(1.0016579627990723,2.0033159255981445,1.0016580820083618); }; Children = {
+    			{ ID = 15; Type = "Attachment"; Properties = { CFrame = CFrame.new(0,-1,0,1,0,0,0,1,0,0,0,1); Name = "LeftFootAttachment"; Position = Vector3.new(0,-1,0); }; Children = {} },
+    			{ ID = 16; Type = "ParticleEmitter"; Properties = { VelocitySpread = 5; Texture = "rbxassetid://13410359900"; RotSpeed = NumberRange.new(-30,30); LightEmission = 1; Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(79/255,232/255,1)),ColorSequenceKeypoint.new(1,Color3.new(79/255,232/255,1))}); Drag = 5; ZOffset = -1; SpreadAngle = Vector2.new(5,5); Rotation = NumberRange.new(-360,360); Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1,0),NumberSequenceKeypoint.new(0.4860000014305115,0.6000000238418579,0),NumberSequenceKeypoint.new(0.6050000190734863,0.6000000238418579,0),NumberSequenceKeypoint.new(1,1,0)}); Name = "Aura"; Lifetime = NumberRange.new(0.6000000238418579); Speed = NumberRange.new(0,1); Rate = 25; LockedToPart = true; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0.3125,0),NumberSequenceKeypoint.new(1,1.4375001192092896,0)}); }; Children = {} },
+    			{ ID = 17; Type = "ParticleEmitter"; Properties = { Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(14/51,84/85,1)),ColorSequenceKeypoint.new(1,Color3.new(14/51,84/85,1))}); LockedToPart = true; ZOffset = 3; Texture = "rbxassetid://13768810492"; Name = "Stars"; Lifetime = NumberRange.new(0.20000000298023224,0.30000001192092896); Speed = NumberRange.new(0); LightEmission = 1; Rate = 5; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0,0),NumberSequenceKeypoint.new(0.5009999871253967,0.5,0.5),NumberSequenceKeypoint.new(1,0,0)}); }; Children = {} },
+    		}; };
+    		{ ID = 18; Type = "MeshPart"; Properties = { MeshId = "rbxassetid://11697594450"; Reflectance = 0.44999998807907104; Name = "Right Arm"; CanCollide = false; Material = Enum.Material.SmoothPlastic; CFrame = CFrame.new(-27.5831298828125,4.001658916473389,119.00080871582031,1,0,0,0,1,0,0,0,1); Position = Vector3.new(-27.5831298828125,4.001658916473389,119.00080871582031); Size = Vector3.new(1.0016579627990723,2.0033159255981445,1.0016580820083618); }; Children = {
+    			{ ID = 19; Type = "Attachment"; Properties = { CFrame = CFrame.new(0,1,0,1,0,0,0,1,0,0,0,1); Name = "RightShoulderAttachment"; Position = Vector3.new(0,1,0); }; Children = {} },
+    			{ ID = 20; Type = "Attachment"; Properties = { CFrame = CFrame.new(0,-1,0,1,0,0,0,1,0,0,0,1); Name = "RightGripAttachment"; Position = Vector3.new(0,-1,0); }; Children = {} },
+    			{ ID = 21; Type = "ParticleEmitter"; Properties = { VelocitySpread = 5; Texture = "rbxassetid://13410359900"; RotSpeed = NumberRange.new(-30,30); LightEmission = 1; Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(79/255,232/255,1)),ColorSequenceKeypoint.new(1,Color3.new(79/255,232/255,1))}); Drag = 5; ZOffset = -1; SpreadAngle = Vector2.new(5,5); Rotation = NumberRange.new(-360,360); Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1,0),NumberSequenceKeypoint.new(0.4860000014305115,0.6000000238418579,0),NumberSequenceKeypoint.new(0.6050000190734863,0.6000000238418579,0),NumberSequenceKeypoint.new(1,1,0)}); Name = "Aura"; Lifetime = NumberRange.new(0.6000000238418579); Speed = NumberRange.new(0,1); Rate = 25; LockedToPart = true; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0.3125,0),NumberSequenceKeypoint.new(1,1.4375001192092896,0)}); }; Children = {} },
+    			{ ID = 22; Type = "ParticleEmitter"; Properties = { Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(14/51,84/85,1)),ColorSequenceKeypoint.new(1,Color3.new(14/51,84/85,1))}); LockedToPart = true; ZOffset = 3; Texture = "rbxassetid://13768810492"; Name = "Stars"; Lifetime = NumberRange.new(0.20000000298023224,0.30000001192092896); Speed = NumberRange.new(0); LightEmission = 1; Rate = 5; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0,0),NumberSequenceKeypoint.new(0.5009999871253967,0.5,0.5),NumberSequenceKeypoint.new(1,0,0)}); }; Children = {} },
+    		}; };
+    		{ ID = 23; Type = "MeshPart"; Properties = { MeshId = "rbxassetid://11697594312"; Reflectance = 0.44999998807907104; Name = "Right Leg"; CanCollide = false; Material = Enum.Material.SmoothPlastic; CFrame = CFrame.new(-28.5831298828125,2.0016589164733887,119.00080871582031,1,0,0,0,1,0,0,0,1); Position = Vector3.new(-28.5831298828125,2.0016589164733887,119.00080871582031); Size = Vector3.new(1.0016579627990723,2.0033159255981445,1.0016580820083618); }; Children = {
+    			{ ID = 24; Type = "Attachment"; Properties = { CFrame = CFrame.new(0,-1,0,1,0,0,0,1,0,0,0,1); Name = "RightFootAttachment"; Position = Vector3.new(0,-1,0); }; Children = {} },
+    			{ ID = 25; Type = "ParticleEmitter"; Properties = { VelocitySpread = 5; Texture = "rbxassetid://13410359900"; RotSpeed = NumberRange.new(-30,30); LightEmission = 1; Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(79/255,232/255,1)),ColorSequenceKeypoint.new(1,Color3.new(79/255,232/255,1))}); Drag = 5; ZOffset = -1; SpreadAngle = Vector2.new(5,5); Rotation = NumberRange.new(-360,360); Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1,0),NumberSequenceKeypoint.new(0.4860000014305115,0.6000000238418579,0),NumberSequenceKeypoint.new(0.6050000190734863,0.6000000238418579,0),NumberSequenceKeypoint.new(1,1,0)}); Name = "Aura"; Lifetime = NumberRange.new(0.6000000238418579); Speed = NumberRange.new(0,1); Rate = 25; LockedToPart = true; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0.3125,0),NumberSequenceKeypoint.new(1,1.4375001192092896,0)}); }; Children = {} },
+    			{ ID = 26; Type = "ParticleEmitter"; Properties = { Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(14/51,84/85,1)),ColorSequenceKeypoint.new(1,Color3.new(14/51,84/85,1))}); LockedToPart = true; ZOffset = 3; Texture = "rbxassetid://13768810492"; Name = "Stars"; Lifetime = NumberRange.new(0.20000000298023224,0.30000001192092896); Speed = NumberRange.new(0); LightEmission = 1; Rate = 5; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0,0),NumberSequenceKeypoint.new(0.5009999871253967,0.5,0.5),NumberSequenceKeypoint.new(1,0,0)}); }; Children = {} },
+    		}; };
+    		{ ID = 27; Type = "MeshPart"; Properties = { MeshId = "rbxassetid://11697594497"; Transparency = 1; Reflectance = 0.44999998807907104; Position = Vector3.new(-29.0831298828125,4.001658916473389,119.00080871582031); Name = "HumanoidRootPart"; CFrame = CFrame.new(-29.0831298828125,4.001658916473389,119.00080871582031,1,0,0,0,1,0,0,0,1); Material = Enum.Material.SmoothPlastic; Size = Vector3.new(2.0033159255981445,2.0033159255981445,1.0016580820083618); }; Children = {
+    			{ ID = 28; Type = "Attachment"; Properties = { Name = "RootAttachment"; }; Children = {} },
+    			{ ID = 29; Type = "Motor6D"; Properties = { Part1 = "_R:31_"; Name = "RootJoint"; C1 = CFrame.new(0,0,0,-1,0,0,0,0,1,0,1,-0); C0 = CFrame.new(0,0,0,-1,0,0,0,0,1,0,1,-0); Part0 = "_R:27_"; MaxVelocity = 0.10000000149011612; }; Children = {} },
+    		}; };
+    		{ ID = 30; Type = "Humanoid"; Properties = { HealthDisplayDistance = 0; NameDisplayDistance = 0; DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None; HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff; }; Children = {} };
+    		{ ID = 31; Type = "MeshPart"; Properties = { MeshId = "rbxassetid://11697594497"; Reflectance = 0.44999998807907104; Position = Vector3.new(-29.0831298828125,4.001658916473389,119.00080871582031); Name = "Torso"; CFrame = CFrame.new(-29.0831298828125,4.001658916473389,119.00080871582031,1,0,0,0,1,0,0,0,1); Material = Enum.Material.SmoothPlastic; Size = Vector3.new(2.0033159255981445,2.0033159255981445,1.0016580820083618); }; Children = {
+    			{ ID = 32; Type = "Attachment"; Properties = { CFrame = CFrame.new(0,0,-0.4978906810283661,1,0,0,0,1,0,0,0,1); Name = "BodyFrontAttachment"; Position = Vector3.new(0,0,-0.4978906810283661); }; Children = {} },
+    			{ ID = 33; Type = "Attachment"; Properties = { CFrame = CFrame.new(-0.9957813620567322,0.9957813024520874,0,1,0,0,0,1,0,0,0,1); Name = "LeftCollarAttachment"; Position = Vector3.new(-0.9957813620567322,0.9957813024520874,0); }; Children = {} },
+    			{ ID = 34; Type = "Attachment"; Properties = { CFrame = CFrame.new(0,0.9957813024520874,0,1,0,0,0,1,0,0,0,1); Name = "NeckAttachment"; Position = Vector3.new(0,0.9957813024520874,0); }; Children = {} },
+    			{ ID = 35; Type = "Attachment"; Properties = { CFrame = CFrame.new(0.9957813620567322,0.9957813024520874,0,1,0,0,0,1,0,0,0,1); Name = "RightCollarAttachment"; Position = Vector3.new(0.9957813620567322,0.9957813024520874,0); }; Children = {} },
+    			{ ID = 36; Type = "Attachment"; Properties = { CFrame = CFrame.new(0,-0.9957813024520874,0.4978906810283661,1,0,0,0,1,0,0,0,1); Name = "WaistBackAttachment"; Position = Vector3.new(0,-0.9957813024520874,0.4978906810283661); }; Children = {} },
+    			{ ID = 37; Type = "Attachment"; Properties = { CFrame = CFrame.new(0,-0.9957813024520874,0,1,0,0,0,1,0,0,0,1); Name = "WaistCenterAttachment"; Position = Vector3.new(0,-0.9957813024520874,0); }; Children = {} },
+    			{ ID = 38; Type = "Attachment"; Properties = { CFrame = CFrame.new(0,-0.9957813024520874,-0.4978906810283661,1,0,0,0,1,0,0,0,1); Name = "WaistFrontAttachment"; Position = Vector3.new(0,-0.9957813024520874,-0.4978906810283661); }; Children = {} },
+    			{ ID = 39; Type = "Attachment"; Properties = { CFrame = CFrame.new(0,0,0.4978906810283661,1,0,0,0,1,0,0,0,1); Name = "BodyBackAttachment"; Position = Vector3.new(0,0,0.4978906810283661); }; Children = {} },
+    			{ ID = 40; Type = "Motor6D"; Properties = { Part1 = "_R:14_"; Name = "Left Hip"; C1 = CFrame.new(-0.5,1,0,0,0,-1,0,1,0,1,0,0); C0 = CFrame.new(-1,-1,0,0,0,-1,0,1,0,1,0,0); Part0 = "_R:31_"; MaxVelocity = 0.10000000149011612; }; Children = {} },
+    			{ ID = 41; Type = "Motor6D"; Properties = { Part1 = "_R:9_"; Name = "Left Shoulder"; C1 = CFrame.new(0.5,0.5,0,0,0,-1,0,1,0,1,0,0); C0 = CFrame.new(-1,0.5,0,0,0,-1,0,1,0,1,0,0); Part0 = "_R:31_"; MaxVelocity = 0.10000000149011612; }; Children = {} },
+    			{ ID = 42; Type = "Motor6D"; Properties = { Part1 = "_R:1_"; Name = "Neck"; C1 = CFrame.new(0,-0.5,0,-1,0,0,0,0,1,0,1,-0); C0 = CFrame.new(0,1,0,-1,0,0,0,0,1,0,1,-0); Part0 = "_R:31_"; MaxVelocity = 0.10000000149011612; }; Children = {} },
+    			{ ID = 43; Type = "Motor6D"; Properties = { Part1 = "_R:23_"; Name = "Right Hip"; C1 = CFrame.new(0.5,1,0,0,0,1,0,1,-0,-1,0,0); C0 = CFrame.new(1,-1,0,0,0,1,0,1,-0,-1,0,0); Part0 = "_R:31_"; MaxVelocity = 0.10000000149011612; }; Children = {} },
+    			{ ID = 44; Type = "Motor6D"; Properties = { Part1 = "_R:18_"; Name = "Right Shoulder"; C1 = CFrame.new(-0.5,0.5,0,0,0,1,0,1,-0,-1,0,0); C0 = CFrame.new(1,0.5,0,0,0,1,0,1,-0,-1,0,0); Part0 = "_R:31_"; MaxVelocity = 0.10000000149011612; }; Children = {} },
+    			{ ID = 45; Type = "ParticleEmitter"; Properties = { VelocitySpread = 5; Texture = "rbxassetid://13410359900"; RotSpeed = NumberRange.new(-30,30); LightEmission = 1; Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(79/255,232/255,1)),ColorSequenceKeypoint.new(1,Color3.new(79/255,232/255,1))}); Drag = 5; ZOffset = -1; SpreadAngle = Vector2.new(5,5); Rotation = NumberRange.new(-360,360); Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1,0),NumberSequenceKeypoint.new(0.4860000014305115,0.6000000238418579,0),NumberSequenceKeypoint.new(0.6050000190734863,0.6000000238418579,0),NumberSequenceKeypoint.new(1,1,0)}); Name = "Aura"; Lifetime = NumberRange.new(0.6000000238418579); Speed = NumberRange.new(0,1); Rate = 25; LockedToPart = true; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0.3125,0),NumberSequenceKeypoint.new(1,1.4375001192092896,0)}); }; Children = {} },
+    			{ ID = 46; Type = "Attachment"; Properties = { Name = "Main"; }; Children = {
+    				{ ID = 47; Type = "ParticleEmitter"; Properties = { Texture = "rbxassetid://1075864321"; Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(23/51,229/255,1)),ColorSequenceKeypoint.new(1,Color3.new(23/51,229/255,1))}); LockedToPart = true; ZOffset = -1; LightEmission = 1; EmissionDirection = Enum.NormalId.Front; Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1,0),NumberSequenceKeypoint.new(0.49947309494018555,0.7357512712478638,0),NumberSequenceKeypoint.new(1,1,0)}); Name = "Light"; Lifetime = NumberRange.new(1.2999999523162842); Speed = NumberRange.new(0.0010000000474974513); Rotation = NumberRange.new(-360,360); Rate = 2; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,4.5,0),NumberSequenceKeypoint.new(1,4.5,0)}); }; Children = {} },
+    				{ ID = 48; Type = "ParticleEmitter"; Properties = { VelocitySpread = -360; Acceleration = Vector3.new(0,10,0); Texture = "rbxassetid://17086409913"; LightEmission = 1; Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(1/3,1,1)),ColorSequenceKeypoint.new(1,Color3.new(1/3,1,1))}); Drag = 10; ZOffset = -2; SpreadAngle = Vector2.new(-360,360); Rotation = NumberRange.new(-360,360); Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1,0),NumberSequenceKeypoint.new(0.10092400014400482,0,0),NumberSequenceKeypoint.new(1,0,0)}); Name = "Specs1"; Lifetime = NumberRange.new(0.75,1); Speed = NumberRange.new(25); Rate = 150; LockedToPart = true; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0.05000000074505806,0.05000000074505806),NumberSequenceKeypoint.new(0.30000001192092896,0.05000000074505806,0.05000000074505806),NumberSequenceKeypoint.new(1,0,0)}); }; Children = {} },
+    				{ ID = 49; Type = "ParticleEmitter"; Properties = { Acceleration = Vector3.new(0,15,0); RotSpeed = NumberRange.new(-300,300); VelocitySpread = -360; Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(31/85,1,244/255)),ColorSequenceKeypoint.new(1,Color3.new(31/85,1,244/255))}); Drag = 7; ZOffset = 2; Texture = "rbxassetid://9470888178"; Rotation = NumberRange.new(-360,360); LightEmission = 1; Name = "Cubes"; Lifetime = NumberRange.new(1,1.5); Speed = NumberRange.new(45); SpreadAngle = Vector2.new(-360,360); LockedToPart = true; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0,0),NumberSequenceKeypoint.new(0.26100000739097595,0.10000000149011612,0.10000000149011612),NumberSequenceKeypoint.new(1,0,0)}); }; Children = {} },
+    				{ ID = 50; Type = "ParticleEmitter"; Properties = { VelocitySpread = -180; Acceleration = Vector3.new(0,10,0); Texture = "rbxassetid://6763809313"; LightEmission = 1; Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(58/255,1,72/85)),ColorSequenceKeypoint.new(1,Color3.new(58/255,1,72/85))}); Drag = 5; ZOffset = -1; SpreadAngle = Vector2.new(-180,180); Rotation = NumberRange.new(-90); Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1,0),NumberSequenceKeypoint.new(0.25,0,0),NumberSequenceKeypoint.new(1,1,0)}); Name = "Specs2"; Lifetime = NumberRange.new(0.10000000149011612); Speed = NumberRange.new(100); Rate = 100; LockedToPart = true; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0.8749997615814209,0.8749997615814209),NumberSequenceKeypoint.new(1,0,0)}); }; Children = {} },
+    				{ ID = 51; Type = "ParticleEmitter"; Properties = { VelocitySpread = -360; RotSpeed = NumberRange.new(-35,35); Texture = "rbxassetid://10357918337"; LightEmission = 1; Drag = 4; ZOffset = 0.699999988079071; SpreadAngle = Vector2.new(-360,360); Rotation = NumberRange.new(-360,360); Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1,0),NumberSequenceKeypoint.new(0.2695560157299042,0.8812500238418579,0.018750011920928955),NumberSequenceKeypoint.new(1,1,0)}); Name = "Wind"; Lifetime = NumberRange.new(0.4000000059604645,0.6000000238418579); Speed = NumberRange.new(0.0010000000474974513); Rate = 15; LockedToPart = true; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0,0),NumberSequenceKeypoint.new(0.28701457381248474,3.812499523162842,0),NumberSequenceKeypoint.new(0.4180825352668762,5.499999523162842,0),NumberSequenceKeypoint.new(0.5254854559898376,6.9375,0),NumberSequenceKeypoint.new(0.6930000185966492,6.940000057220459,0),NumberSequenceKeypoint.new(1,6.940000057220459,0)}); }; Children = {} },
+    				{ ID = 52; Type = "ParticleEmitter"; Properties = { Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(1,1,1)),ColorSequenceKeypoint.new(1,Color3.new(1,1,1))}); Drag = 7; VelocitySpread = -360; Lifetime = NumberRange.new(0.75); Speed = NumberRange.new(25); Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0,0),NumberSequenceKeypoint.new(0.5086107850074768,0.9375,0),NumberSequenceKeypoint.new(1,0,0)}); Acceleration = Vector3.new(0,15,0); RotSpeed = NumberRange.new(1,160); LockedToPart = true; Rate = 25; EmissionDirection = Enum.NormalId.Bottom; Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1,0),NumberSequenceKeypoint.new(0.05368097871541977,0,0),NumberSequenceKeypoint.new(0.9769938588142395,0,0),NumberSequenceKeypoint.new(1,1,0)}); Name = "SnowFlake"; LightEmission = 1; Texture = "rbxassetid://8163218169"; Rotation = NumberRange.new(0,360); SpreadAngle = Vector2.new(-360,360); }; Children = {} },
+    			}; },
+    			{ ID = 53; Type = "ParticleEmitter"; Properties = { VelocitySpread = -1000; RotSpeed = NumberRange.new(-10,10); Texture = "rbxassetid://11941047152"; LightEmission = 1; Drag = 1; ZOffset = 5; SpreadAngle = Vector2.new(-1000,1000); Rotation = NumberRange.new(-1000,1000); Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,0,0),NumberSequenceKeypoint.new(1,1,0)}); Name = "Snow"; Lifetime = NumberRange.new(2); Speed = NumberRange.new(0); Rate = 1; LockedToPart = true; Orientation = Enum.ParticleOrientation.VelocityPerpendicular; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,5,0),NumberSequenceKeypoint.new(1,5,0)}); }; Children = {} },
+    				{ ID = 54; Type = "ParticleEmitter"; Properties = { Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(1,1,1)),ColorSequenceKeypoint.new(1,Color3.new(1,1,1))}); LockedToPart = true; ZOffset = 3; Texture = "rbxassetid://13768810492"; Name = "Stars"; Lifetime = NumberRange.new(0.20000000298023224,0.30000001192092896); Speed = NumberRange.new(0); LightEmission = 1; Rate = 5; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0,0),NumberSequenceKeypoint.new(0.5009999871253967,0.5,0.5),NumberSequenceKeypoint.new(1,0,0)}); }; Children = {} },
+    		}; };
+    	};
+    };
+
+    local function Scan(item, parent)
+        local obj = Instance.new(item.Type)
+        if (item.ID) then
+            local awaiting = awaitRef[item.ID]
+            if (awaiting) then
+                awaiting[1][awaiting[2]] = obj
+                awaitRef[item.ID] = nil
+            else
+                partsWithId[item.ID] = obj
+            end
+        end
+        for p,v in pairs(item.Properties) do
+            if (type(v) == "string") then
+                local id = tonumber(v:match("^_R:(%w+)_$"))
+                if (id) then
+                    if (partsWithId[id]) then
+                        v = partsWithId[id]
+                    else
+                        awaitRef[id] = {obj, p}
+                        v = nil
+                    end
+                end
+            end
+            obj[p] = v
+        end
+        for _,c in pairs(item.Children) do
+            Scan(c, obj)
+        end
+        obj.Parent = parent
+        return obj
+    end
+
+    V.FrozenTemplate = Scan(root, nil)
+    return V.FrozenTemplate
+end
+
+function V.CreateFrozenAura(char)
+    if not char then return end
+    local template = V._GetFrozenTemplate()
+    if not template then return end
+
+    local function findPart(charModel, names)
+        for i=1,#names do
+            local p = charModel:FindFirstChild(names[i])
+            if p then return p end
+        end
+        return nil
+    end
+    local function getAttachOrPart(partNames, attachNames)
+        local part = findPart(char, partNames)
+        if part then
+            for i=1,#attachNames do
+                local a = part:FindFirstChild(attachNames[i])
+                if a then return a end
+            end
+            return part
+        end
+        return nil
+    end
+    local function addAllFrom(node, target)
+        if not node or not target then return end
+        for _,d in ipairs(node:GetDescendants()) do
+            if d:IsA('ParticleEmitter') then
+                local pe = d:Clone()
+                pe.Parent = target
+                table.insert(V.AuraEmitters, pe)
+            end
+        end
+    end
+
+    local tHead = template:FindFirstChild('Head')
+    local tLArm = template:FindFirstChild('Left Arm')
+    local tRArm = template:FindFirstChild('Right Arm')
+    local tLLeg = template:FindFirstChild('Left Leg')
+    local tRLeg = template:FindFirstChild('Right Leg')
+    local tTorso = template:FindFirstChild('Torso')
+
+    addAllFrom(tHead, getAttachOrPart({'Head'},{'HatAttachment','FaceCenterAttachment'}))
+    addAllFrom(tLArm, getAttachOrPart({'LeftUpperArm','Left Arm'},{'LeftShoulderRigAttachment','LeftShoulderAttachment'}))
+    addAllFrom(tRArm, getAttachOrPart({'RightUpperArm','Right Arm'},{'RightShoulderRigAttachment','RightShoulderAttachment'}))
+    addAllFrom(tLLeg, getAttachOrPart({'LeftFoot','Left Leg'},{'LeftFootAttachment'}))
+    addAllFrom(tRLeg, getAttachOrPart({'RightFoot','Right Leg'},{'RightFootAttachment'}))
+    addAllFrom(tTorso, getAttachOrPart({'UpperTorso','Torso'},{'WaistCenterAttachment','BodyBackAttachment'}))
 end
 
 local function IsPlayerKO(player)
@@ -4082,7 +4284,7 @@ end
 
 V.NameTags = {}
 V.NameTagsConnections = {}
-local RunService = game:GetService('RunService')
+-- RunService уже кеширован в V.RS
 
 local function CreateNameTag(player)
     if not player.Character then return nil end
@@ -4094,28 +4296,30 @@ local function CreateNameTag(player)
     bb.Size = UDim2.new(0, 200, 0, 30)
             bb.StudsOffset = Vector3.new(0, 1.5, 0)
     bb.AlwaysOnTop = true
-    local tl = Instance.new('TextLabel')
-    tl.Size = UDim2.new(1, 0, 1, 0)
-    tl.BackgroundTransparency = Config.NameTags.BackgroundTransparency
-    tl.BackgroundColor3 = Color3.new()
-    tl.BorderSizePixel = 0
-    tl.Font = Enum.Font.SourceSansBold
-    tl.TextScaled = false   
-    tl.Font = Config.NameTags.Font
-    tl.TextSize = 14 * Config.NameTags.Scale
-    tl.TextStrokeTransparency = 0.5
-    tl.TextColor3 = Config.NameTags.Color
-        tl.Text = Config.NameTags.UseDisplayName and player.DisplayName or player.Name
-    tl.Parent = bb
-        -- Скрываем стандартный ник Roblox
+    V.TempNameLabel = Instance.new('TextLabel')
+    V.TempNameLabel.Size = UDim2.new(1, 0, 1, 0)
+    V.TempNameLabel.BackgroundTransparency = Config.NameTags.BackgroundTransparency
+    V.TempNameLabel.BackgroundColor3 = Color3.new()
+    V.TempNameLabel.BorderSizePixel = 0
+    V.TempNameLabel.Font = Enum.Font.SourceSansBold
+    V.TempNameLabel.TextScaled = false   
+    V.TempNameLabel.Font = Config.NameTags.Font
+    V.TempNameLabel.TextSize = 14 * Config.NameTags.Scale
+    V.TempNameLabel.TextStrokeTransparency = 0.5
+    V.TempNameLabel.TextColor3 = Config.NameTags.Color
+        V.TempNameLabel.Text = Config.NameTags.UseDisplayName and player.DisplayName or player.Name
+    V.TempNameLabel.Parent = bb
+        -- Hide default Roblox overhead names
     if player.Character and player.Character:FindFirstChild('Humanoid') then
-        local hum = player.Character.Humanoid
+            local hum = player.Character.Humanoid
         hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-        -- Если Roblox внезапно вернёт отображение ника (например, после смерти), сразу выключаем
+        -- If Roblox suddenly re-enables name display (e.g., after death), immediately disable
         if V.NameTagsConnections["HumanoidDDT_"..player.UserId] then
             V.NameTagsConnections["HumanoidDDT_"..player.UserId]:Disconnect()
         end
         V.NameTagsConnections["HumanoidDDT_"..player.UserId] = hum:GetPropertyChangedSignal("DisplayDistanceType"):Connect(function()
+            local humanoid = player.Character.Humanoid
+            humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
             hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
         end)
         -- При смерти тоже убеждаемся, что ник не появится
@@ -4128,22 +4332,23 @@ local function CreateNameTag(player)
 end
 
 local function UpdateNameTag(bb, player, distance)
-    local tl = bb and bb:FindFirstChildOfClass('TextLabel')
-    if not tl then return end
-    local parts = {}
-    if Config.NameTags.ShowDistance then table.insert(parts, string.format('[%dm]', distance)) end
-    table.insert(parts, Config.NameTags.UseDisplayName and player.DisplayName or player.Name)
+    V.TempNameLabel = bb and bb:FindFirstChildOfClass('TextLabel')
+    if not V.TempNameLabel then return end
+    V.NameTagParts = V.NameTagParts or {}
+    table.clear(V.NameTagParts)
+    if Config.NameTags.ShowDistance then table.insert(V.NameTagParts, string.format('[%dm]', distance)) end
+    table.insert(V.NameTagParts, Config.NameTags.UseDisplayName and player.DisplayName or player.Name)
     if Config.NameTags.ShowHealth and player.Character and player.Character:FindFirstChildOfClass('Humanoid') then
-        table.insert(parts, '{'..math.floor(player.Character.Humanoid.Health)..'}')
+        table.insert(V.NameTagParts, '{'..math.floor(player.Character.Humanoid.Health)..'}')
     end
-    tl.Text = table.concat(parts, ' ')
+    V.TempNameLabel.Text = table.concat(V.NameTagParts, ' ')
     -- Динамический подъём неймтега, чтобы быть над Box ESP
         local dynOffsetY = math.clamp(distance / 25, 1.5, 6)
     if bb then bb.StudsOffset = Vector3.new(0, dynOffsetY, 0) end
-    tl.TextColor3 = Config.NameTags.Color
-    tl.BackgroundTransparency = Config.NameTags.BackgroundTransparency
-    tl.TextSize = 14 * Config.NameTags.Scale
-    tl.Font = Config.NameTags.Font
+    V.TempNameLabel.TextColor3 = Config.NameTags.Color
+    V.TempNameLabel.BackgroundTransparency = Config.NameTags.BackgroundTransparency
+    V.TempNameLabel.TextSize = 14 * Config.NameTags.Scale
+    V.TempNameLabel.Font = Config.NameTags.Font
 end
 
 local function RemoveNameTag(player)
@@ -4158,11 +4363,11 @@ local function HideDefaultNames(enable)
     pcall(function()
         for _, plr in ipairs(V.Players:GetPlayers()) do
             if plr.Character and plr.Character:FindFirstChild('Humanoid') then
-                local hum = plr.Character.Humanoid
+                V.TempHumanoid = plr.Character.Humanoid
                 if enable then
-                    hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+                    V.TempHumanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
                 else
-                    hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+                    V.TempHumanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
                 end
             end
         end
@@ -4205,7 +4410,7 @@ local function EnableNameTags()
     end
     HideDefaultNames(true)
 
-    V.NameTagsConnections.Render = RunService.RenderStepped:Connect(function()
+    V.NameTagsConnections.Render = V.RS.RenderStepped:Connect(function()
         if not Config.NameTags.Enabled then return end
         local lpChar = V.LP.Character
         if not lpChar or not lpChar:FindFirstChild('HumanoidRootPart') then return end
@@ -4967,6 +5172,113 @@ AmbientToggle:AddColorPicker('AmbientColor', {
     end
 })
 
+-- TRAILS SETTINGS UI
+local function ApplyTrail()
+    local lp = V.LP
+    local char = lp and lp.Character
+    local hrp = char and char:FindFirstChild('HumanoidRootPart')
+
+    if not Config.Trails.Enabled or not hrp then
+        if V.TrailInstance then V.TrailInstance.Enabled = false end
+        return
+    end
+
+    -- Ensure attachments
+    if not V.TrailAttach0 or V.TrailAttach0.Parent ~= hrp then
+        V.TrailAttach0 = Instance.new('Attachment')
+        V.TrailAttach0.Name = 'SimpleBotTrailA0'
+        V.TrailAttach0.Position = Vector3.new(0.5, 0, 0)
+        V.TrailAttach0.Parent = hrp
+    end
+    if not V.TrailAttach1 or V.TrailAttach1.Parent ~= hrp then
+        V.TrailAttach1 = Instance.new('Attachment')
+        V.TrailAttach1.Name = 'SimpleBotTrailA1'
+        V.TrailAttach1.Position = Vector3.new(-0.5, 0, 0)
+        V.TrailAttach1.Parent = hrp
+    end
+
+    if not V.TrailInstance or V.TrailInstance.Parent ~= hrp then
+        V.TrailInstance = Instance.new('Trail')
+        V.TrailInstance.Name = 'SimpleBotTrail'
+        V.TrailInstance.Parent = hrp
+    end
+
+    -- Apply properties
+    V.TrailInstance.Attachment0 = V.TrailAttach0
+    V.TrailInstance.Attachment1 = V.TrailAttach1
+    V.TrailInstance.Color = ColorSequence.new(Config.Trails.Color)
+    V.TrailInstance.Transparency = NumberSequence.new(Config.Trails.Transparency)
+    V.TrailInstance.Lifetime = Config.Trails.Length
+    V.TrailInstance.WidthScale = NumberSequence.new(Config.Trails.Width)
+    V.TrailInstance.Enabled = true
+    V.TrailInstance.MinLength = Config.Trails.MinLength
+    V.TrailInstance.FaceCamera = true
+end
+
+local function SetupTrailsUI()
+    -- apply immediately and on respawn
+    ApplyTrail()
+    if V.LP and not V._TrailCharConn then
+        V._TrailCharConn = V.LP.CharacterAdded:Connect(function()
+            task.defer(ApplyTrail)
+        end)
+    end
+
+    local TrailsBox = V.Tabs.Visuals:AddLeftGroupbox('Trails')
+    local TrailsToggle = TrailsBox:AddToggle('TrailsEnabled', {
+        Text = 'Enabled',
+        Default = Config.Trails.Enabled,
+        Callback = function(v)
+            Config.Trails.Enabled = v
+            ApplyTrail()
+        end
+    })
+
+    TrailsToggle:AddColorPicker('TrailsColor', {
+        Title = 'Color',
+        Transparency = false,
+        Default = Config.Trails.Color,
+        Callback = function(c)
+            Config.Trails.Color = c
+            ApplyTrail()
+        end
+    })
+
+    TrailsBox:AddSlider('TrailsTransparency', {
+        Text = 'Transparency',
+        Min = 0, Max = 1, Rounding = 2, Compact = true,
+        Default = Config.Trails.Transparency,
+        Callback = function(v)
+            Config.Trails.Transparency = v
+            ApplyTrail()
+        end
+    })
+
+    TrailsBox:AddSlider('TrailsLength', {
+        Text = 'Length (Lifetime)',
+        Min = 0, Max = 20, Rounding = 1, Compact = true,
+        Default = Config.Trails.Length,
+        Callback = function(v)
+            Config.Trails.Length = v
+            ApplyTrail()
+        end
+    })
+
+    TrailsBox:AddSlider('TrailsWidth', {
+        Text = 'Width',
+        Min = 0, Max = 5, Rounding = 2, Compact = true,
+        Default = Config.Trails.Width,
+        Callback = function(v)
+            Config.Trails.Width = v
+            ApplyTrail()
+        end
+    })
+
+    
+end
+
+SetupTrailsUI()
+
 -- BLOOM SETTINGS UI
 local function ApplyBloom()
     local lighting = game:GetService('Lighting')
@@ -5184,6 +5496,9 @@ if Config.Aura.Enabled == nil then Config.Aura.Enabled = false end
 if not Config.Aura.Type then Config.Aura.Type = 'Health' end
 if not Config.Aura.Color then Config.Aura.Color = Color3.new(1,1,1) end
 if Config.Aura.LightEmission == nil then Config.Aura.LightEmission = 0.6 end
+-- Predeclare cached template holder
+V.ChargingTemplate = V.ChargingTemplate or nil
+V.FrozenTemplate = V.FrozenTemplate or nil
 
 function V.GetBestAuraAttachment(char)
     if not char then return nil end
@@ -5365,6 +5680,93 @@ function V.CreateEmbersAura(char)
     makeOn(torsoParent, Aura2)
 end
 
+-- New: Charging aura built from provided model data (used as a template)
+function V._GetChargingTemplate()
+    if V.ChargingTemplate and V.ChargingTemplate.Parent == nil then
+        -- keep cached instance even if not parented
+        return V.ChargingTemplate
+    end
+    if V.ChargingTemplate and V.ChargingTemplate.Parent then
+        return V.ChargingTemplate
+    end
+
+    local partsWithId = {}
+    local awaitRef = {}
+
+    local root = {
+        ID = 0;
+        Type = "Model";
+        Properties = {
+            Name = "Charging-VFX-01";
+            PrimaryPart = "_R:17_";
+        };
+        Children = { -- truncated non-essential CFrame/Position values preserved where relevant
+            { ID = 21; Type = "MeshPart"; Properties = { Name = "Torso"; MeshId = "rbxassetid://11697594497"; Material = Enum.Material.SmoothPlastic; }; Children = {
+                { ID = 35; Type = "Attachment"; Properties = { Name = "Main"; }; Children = {
+                    { ID = 36; Type = "ParticleEmitter"; Properties = { ZOffset = 4; Texture = "rbxassetid://4509687978"; VelocitySpread = -360; LightEmission = 1; Name = "Main-Core-02"; Lifetime = NumberRange.new(0.25,0.5); Speed = NumberRange.new(0.5,1); SpreadAngle = Vector2.new(-360,630); Rate = 50; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0.35,0),NumberSequenceKeypoint.new(1,0,0)}); }; Children = {} },
+                    { ID = 37; Type = "ParticleEmitter"; Properties = { VelocitySpread = -360; RotSpeed = NumberRange.new(-35,35); Texture = "rbxassetid://10357918337"; LightEmission = 1; Drag = 4; ZOffset = -1; SpreadAngle = Vector2.new(-360,360); Rotation = NumberRange.new(-360,360); Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1,0),NumberSequenceKeypoint.new(0.2724514603614807,0.768750011920929,0.018750011920928955),NumberSequenceKeypoint.new(1,1,0)}); Name = "Wind"; Lifetime = NumberRange.new(0.4,0.6); Speed = NumberRange.new(0.001); Rate = 15; LockedToPart = true; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,4.8125,0),NumberSequenceKeypoint.new(0.21905340254306793,2.562499523162842,0),NumberSequenceKeypoint.new(0.4205097258090973,1.3749998807907104,0),NumberSequenceKeypoint.new(0.553398072719574,0.6874996423721313,0),NumberSequenceKeypoint.new(0.7050970792770386,0.3125,0),NumberSequenceKeypoint.new(1,0,0)}); }; Children = {} },
+                    { ID = 38; Type = "ParticleEmitter"; Properties = { LockedToPart = true; ZOffset = 1; Texture = "rbxassetid://12363772245"; Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1,0),NumberSequenceKeypoint.new(0.5,0,0),NumberSequenceKeypoint.new(1,1,0)}); Name = "Main-Core-01"; Lifetime = NumberRange.new(0.25,0.5); Speed = NumberRange.new(0); LightEmission = 1; Rate = 25; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0.5,0.125),NumberSequenceKeypoint.new(1,0.5,0.125)}); }; Children = {} },
+                    { ID = 39; Type = "ParticleEmitter"; Properties = { LockedToPart = true; ZOffset = 2; Texture = "rbxassetid://6865222957"; Rotation = NumberRange.new(-36,360); Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1,0),NumberSequenceKeypoint.new(0.5,0,0),NumberSequenceKeypoint.new(1,1,0)}); Name = "Charge"; Lifetime = NumberRange.new(0.125,0.25); Speed = NumberRange.new(0); LightEmission = 1; Rate = 100; Size = NumberSequence.new({NumberSequenceKeypoint.new(0,2,0),NumberSequenceKeypoint.new(1,0,0)}); }; Children = {} }
+                } },
+            } } -- Torso
+        }
+    }
+
+    local function Scan(item, parent)
+        local obj = Instance.new(item.Type)
+        if (item.ID) then
+            local awaiting = awaitRef[item.ID]
+            if (awaiting) then
+                awaiting[1][awaiting[2]] = obj
+                awaitRef[item.ID] = nil
+            else
+                partsWithId[item.ID] = obj
+            end
+        end
+        for p,v in pairs(item.Properties) do
+            if (type(v) == "string") then
+                local id = tonumber(v:match("^_R:(%w+)_$"))
+                if (id) then
+                    if (partsWithId[id]) then
+                        v = partsWithId[id]
+                    else
+                        awaitRef[id] = {obj, p}
+                        v = nil
+                    end
+                end
+            end
+            obj[p] = v
+        end
+        for _,c in pairs(item.Children) do
+            Scan(c, obj)
+        end
+        obj.Parent = parent
+        return obj
+    end
+
+    V.ChargingTemplate = Scan(root, nil)
+    return V.ChargingTemplate
+end
+
+function V.CreateChargingAura(attach)
+    if not attach then return end
+    local template = V._GetChargingTemplate()
+    if not template then return end
+    local torso = template:FindFirstChild("Torso")
+    if not torso then return end
+    local main = torso:FindFirstChild("Main")
+    if not main or not main:IsA('Attachment') then return end
+
+    for _, child in ipairs(main:GetChildren()) do
+        if child:IsA('ParticleEmitter') then
+            local pe = child:Clone()
+            pe.Color = V.GetAuraColorSequence()
+            pe.Parent = attach
+            table.insert(V.AuraEmitters, pe)
+        end
+    end
+end
+
 function V.CreateHealthAura(attach)
     if not attach then return end
     -- Helper to make emitter
@@ -5501,6 +5903,11 @@ function V.BuildAuraForCharacter(char)
         V.CreateHealthAura(attach)
     elseif Config.Aura.Type == 'Embers' then
         V.CreateEmbersAura(char)
+    elseif Config.Aura.Type == 'Charging' then
+        if not attach then return end
+        V.CreateChargingAura(attach)
+    elseif Config.Aura.Type == 'Frozen' then
+        V.CreateFrozenAura(char)
     end
     -- apply current light emission setting to all created emitters
     V.UpdateAuraLightEmission()
@@ -5566,7 +5973,7 @@ function V.SetupAuraUI()
     })
 
     AuraBox:AddDropdown('AuraType', {
-        Values = {'Health','Embers'},
+        Values = {'Health','Embers','Charging','Frozen'},
         Default = Config.Aura.Type,
         Multi = false,
         Text = 'Type',
