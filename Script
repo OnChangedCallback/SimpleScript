@@ -45,6 +45,10 @@ local V = {
     SavedDesync = nil,
     StrafeCFrame = nil,
     CSyncHookActive = false,
+
+    -- Aura system cache
+    AuraEmitters = {},
+    AuraCharacterConn = nil,
     CSyncVisualization = nil,
     ViewConnection = nil,
     MagicBulletConnection = nil,
@@ -179,7 +183,7 @@ local V = {
 V.Theme:SetLibrary(V.Lib)
 V.Save:SetLibrary(V.Lib)
 
-local Win = V.Lib:CreateWindow({
+V.Win = V.Lib:CreateWindow({
     Title = 'SimpleBot | Really simple | ' .. os.date('%d.%m.%Y'),
     Themeable = true,
     Info = 'SimpleBot',
@@ -189,12 +193,12 @@ local Win = V.Lib:CreateWindow({
 })
 
 -- Create tabs
-local Tabs = {
-    Aimbot = Win:AddTab('Aimbot'),
-    Misc = Win:AddTab('Misc'),
-    Player = Win:AddTab('Player'),
-    Visuals = Win:AddTab('Visuals'),
-    Config = Win:AddTab('Config')
+V.Tabs = {
+    Aimbot = V.Win:AddTab('Aimbot'),
+    Misc = V.Win:AddTab('Misc'),
+    Player = V.Win:AddTab('Player'),
+    Visuals = V.Win:AddTab('Visuals'),
+    Config = V.Win:AddTab('Config')
 }
 
 -----------------------
@@ -395,6 +399,13 @@ local Config = {
          Enabled = false,
          Hours = 12,
          Minutes = 0
+     },
+ 
+     -- Aura Settings
+     Aura = {
+         Enabled = false,
+         Type = 'Health', -- 'Health' (example aura)
+         Color = Color3.new(1, 1, 1)
      }
  }
 
@@ -452,15 +463,18 @@ end
 local function CreateTargetHighlight(character)
     if not character then return nil end
     
-    local highlight = Instance.new('Highlight')
-    highlight.Parent = character
-    highlight.OutlineColor = Config.TargetHighlight.OutlineColor
-    highlight.FillColor = Config.TargetHighlight.FillColor
-    highlight.OutlineTransparency = Config.TargetHighlight.OutlineTransparency
-    highlight.FillTransparency = Config.TargetHighlight.FillTransparency
-    highlight.Adornee = character
-    
-    return highlight
+    -- уменьшаем количество локалов: используем временный кэш в V и очищаем
+    V.TempHighlight = Instance.new('Highlight')
+    V.TempHighlight.Parent = character
+    V.TempHighlight.OutlineColor = Config.TargetHighlight.OutlineColor
+    V.TempHighlight.FillColor = Config.TargetHighlight.FillColor
+    V.TempHighlight.OutlineTransparency = Config.TargetHighlight.OutlineTransparency
+    V.TempHighlight.FillTransparency = Config.TargetHighlight.FillTransparency
+    V.TempHighlight.Adornee = character
+
+    local ret = V.TempHighlight
+    V.TempHighlight = nil
+    return ret
 end
 
 -- UpdateViewTarget теперь пустая функция-заглушка
@@ -724,68 +738,76 @@ local function CreateDrawingTracer(startPos, endPos)
 end
 
 local function CreateBeamTracer(startPos, endPos)
-    -- Создаем невидимую основную часть
-    local mainPart = Instance.new("Part")
-    mainPart.Name = "BulletTracer"
-    mainPart.Parent = V.WS
-    mainPart.Size = V.BeamTracerSize
-    mainPart.Massless = true
-    mainPart.Transparency = 1
-    mainPart.CanCollide = false
-    mainPart.Position = startPos
-    mainPart.Anchored = true
+    -- Создаем невидимую основную часть (временные переменные через V, затем очищаем)
+    V.TempMainPart = Instance.new("Part")
+    V.TempMainPart.Name = "BulletTracer"
+    V.TempMainPart.Parent = V.WS
+    V.TempMainPart.Size = V.BeamTracerSize
+    V.TempMainPart.Massless = true
+    V.TempMainPart.Transparency = 1
+    V.TempMainPart.CanCollide = false
+    V.TempMainPart.Position = startPos
+    V.TempMainPart.Anchored = true
 
     -- Создаем две точки для луча
-    local part0 = Instance.new("Part")
-    part0.Parent = mainPart
-    part0.Size = V.BeamTracerSize
-    part0.Massless = true
-    part0.Transparency = 1
-    part0.CanCollide = false
-    part0.Position = startPos
-    part0.Anchored = true
+    V.TempPart0 = Instance.new("Part")
+    V.TempPart0.Parent = V.TempMainPart
+    V.TempPart0.Size = V.BeamTracerSize
+    V.TempPart0.Massless = true
+    V.TempPart0.Transparency = 1
+    V.TempPart0.CanCollide = false
+    V.TempPart0.Position = startPos
+    V.TempPart0.Anchored = true
 
-    local part1 = Instance.new("Part")
-    part1.Parent = mainPart
-    part1.Size = V.BeamTracerSize
-    part1.Massless = true
-    part1.Transparency = 1
-    part1.CanCollide = false
-    part1.Position = endPos
-    part1.Anchored = true
+    V.TempPart1 = Instance.new("Part")
+    V.TempPart1.Parent = V.TempMainPart
+    V.TempPart1.Size = V.BeamTracerSize
+    V.TempPart1.Massless = true
+    V.TempPart1.Transparency = 1
+    V.TempPart1.CanCollide = false
+    V.TempPart1.Position = endPos
+    V.TempPart1.Anchored = true
 
     -- Создаем точки крепления для луча
-    local attachment0 = Instance.new("Attachment")
-    attachment0.Parent = part0
+    V.TempAttach0 = Instance.new("Attachment")
+    V.TempAttach0.Parent = V.TempPart0
 
-    local attachment1 = Instance.new("Attachment")
-    attachment1.Parent = part1
+    V.TempAttach1 = Instance.new("Attachment")
+    V.TempAttach1.Parent = V.TempPart1
 
     -- Создаем сам луч
-    local beam = Instance.new("Beam")
-    beam.Texture = "rbxassetid://7216850022"
-    beam.TextureMode = Enum.TextureMode.Wrap
-    beam.TextureLength = 10
-    beam.LightEmission = 1
-    beam.LightInfluence = 1
-    beam.FaceCamera = true
-    beam.ZOffset = -1
-    beam.Width0 = Config.BulletTracers.Thickness
-    beam.Width1 = Config.BulletTracers.Thickness
-    beam.Transparency = NumberSequence.new(0)
-    beam.Color = ColorSequence.new(Config.BulletTracers.Color)
-    beam.Attachment0 = attachment0
-    beam.Attachment1 = attachment1
-    beam.Enabled = true
-    beam.Parent = mainPart
+    V.TempBeam = Instance.new("Beam")
+    V.TempBeam.Texture = "rbxassetid://7216850022"
+    V.TempBeam.TextureMode = Enum.TextureMode.Wrap
+    V.TempBeam.TextureLength = 10
+    V.TempBeam.LightEmission = 1
+    V.TempBeam.LightInfluence = 1
+    V.TempBeam.FaceCamera = true
+    V.TempBeam.ZOffset = -1
+    V.TempBeam.Width0 = Config.BulletTracers.Thickness
+    V.TempBeam.Width1 = Config.BulletTracers.Thickness
+    V.TempBeam.Transparency = NumberSequence.new(0)
+    V.TempBeam.Color = ColorSequence.new(Config.BulletTracers.Color)
+    V.TempBeam.Attachment0 = V.TempAttach0
+    V.TempBeam.Attachment1 = V.TempAttach1
+    V.TempBeam.Enabled = true
+    V.TempBeam.Parent = V.TempMainPart
 
     table.insert(V.ActiveTracers, {
         type = "Beam",
-        mainPart = mainPart,
-        beam = beam,
+        mainPart = V.TempMainPart,
+        beam = V.TempBeam,
         startTime = tick(),
         duration = Config.BulletTracers.Duration
     })
+
+    -- очистка временных ссылок
+    V.TempBeam = nil
+    V.TempAttach0 = nil
+    V.TempAttach1 = nil
+    V.TempPart0 = nil
+    V.TempPart1 = nil
+    V.TempMainPart = nil
 end
 
 local function CreateTracer(startPos, endPos)
@@ -1095,6 +1117,14 @@ local function ResetAutoStompCamera()
         end
     end
     
+    -- Если камера была привязана к followPart, вернем её на Humanoid ДО удаления followPart,
+    -- чтобы избежать залипания/заморозки камеры независимо от состояния CSync/ViewTarget
+    do
+        local lhum = V.LP.Character and V.LP.Character:FindFirstChildOfClass("Humanoid")
+        if lhum and V.AutoStompState.followPart and V.Cam.CameraSubject == V.AutoStompState.followPart then
+            V.Cam.CameraSubject = lhum
+        end
+    end
     if V.AutoStompState.followPart and V.AutoStompState.followPart.Parent then
         V.AutoStompState.followPart:Destroy()
     end
@@ -1121,9 +1151,10 @@ local function ResetAutoStompCamera()
             StartHide()
         end
     end
-    if not Config.Aimbot.CSyncEnabled and not Config.Aimbot.ViewTarget then
+    -- Дополнительно: если камера всё ещё указывает на несуществующий объект, вернём на Humanoid
+    do
         local lhum = V.LP.Character and V.LP.Character:FindFirstChildOfClass("Humanoid")
-        if lhum then
+        if lhum and (not V.Cam.CameraSubject or (typeof(V.Cam.CameraSubject) == "Instance" and not V.Cam.CameraSubject.Parent)) then
             V.Cam.CameraSubject = lhum
         end
     end
@@ -2105,7 +2136,7 @@ end
 -- AIMBOT UI
 -----------------------
 
-V.AimbotBox = Tabs.Aimbot:AddLeftGroupbox('Aimbot Settings')
+V.AimbotBox = V.Tabs.Aimbot:AddLeftGroupbox('Aimbot Settings')
 
 V.AimbotBox:AddInput('Prediction', {
     Default = '0.1',
@@ -2140,7 +2171,7 @@ V.AimbotBox:AddDropdown('SelectedPart', {
     end
 })
 
-V.TargetBox = Tabs.Aimbot:AddLeftGroupbox('Targeting')
+V.TargetBox = V.Tabs.Aimbot:AddLeftGroupbox('Targeting')
 
 V.TargetBox:AddToggle('TargetingEnabled', {
     Text = 'Targeting Enabled',
@@ -2212,7 +2243,7 @@ V.TargetBox:AddToggle('GunExploitEnabled', {
 })
 
 -- AutoStomp Settings UI
-local AutoStompBox = Tabs.Aimbot:AddRightGroupbox('AutoStomp Settings')
+local AutoStompBox = V.Tabs.Aimbot:AddRightGroupbox('AutoStomp Settings')
 
 AutoStompBox:AddSlider('DelayBeforeStomp', {
     Text = 'Delay Start',
@@ -2258,7 +2289,7 @@ AutoStompBox:AddSlider('YOffset', {
 })
 
 -- Targeting Modes UI
-local TargetModeBox = Tabs.Aimbot:AddLeftGroupbox('Targeting modes')
+local TargetModeBox = V.Tabs.Aimbot:AddLeftGroupbox('Targeting modes')
 TargetModeBox:AddDropdown('TargetMode', {
     Values = {'Sticky','Nuker'},
     Default = 1,
@@ -2309,7 +2340,7 @@ V.TargetBox:AddLabel('Sticky Key'):AddKeyPicker('StickyKeybind', {
 -- SKIP SETTINGS UI
 -----------------------
 
-V.SkipBox = Tabs.Aimbot:AddRightGroupbox('Skip')
+V.SkipBox = V.Tabs.Aimbot:AddRightGroupbox('Skip')
 V.SkipBox:AddToggle('SkipCovered', {
     Text = 'Skip Covered',
     Default = false,
@@ -2341,7 +2372,7 @@ V.SkipBox:AddToggle('SkipGrabbed', {
 -- RESET TARGET ON UI
 -----------------------
 
-V.ResetBox = Tabs.Aimbot:AddRightGroupbox('ResetTargetON')
+V.ResetBox = V.Tabs.Aimbot:AddRightGroupbox('ResetTargetON')
 V.ResetBox:AddToggle('ResetKnocked', {
     Text = 'Knocked',
     Default = false,
@@ -2371,7 +2402,7 @@ V.ResetBox:AddToggle('ResetDeath', {
 -- VISUALIZATIONS UI
 -----------------------
 
-V.VisBox = Tabs.Aimbot:AddRightGroupbox('Visualizations')
+V.VisBox = V.Tabs.Aimbot:AddRightGroupbox('Visualizations')
 
 V.HLToggle = V.VisBox:AddToggle('TargetHighlight', {
     Text = 'Target Highlight',
@@ -2422,7 +2453,7 @@ V.VisBox:AddSlider('FillTransparency', {
 -- HITCHAMS UI
 -----------------------
 
-V.HitChamsBox = Tabs.Aimbot:AddRightGroupbox('HitChams')
+V.HitChamsBox = V.Tabs.Aimbot:AddRightGroupbox('HitChams')
 
 V.HitChamsToggle = V.HitChamsBox:AddToggle('HitChamsEnabled', {
     Text = 'HitChams',
@@ -2535,7 +2566,7 @@ V.HitChamsBox:AddSlider('SkeletonThickness', {
 -- BULLET TRACERS UI
 -----------------------
 
-local BulletTracersBox = Tabs.Visuals:AddLeftGroupbox('BulletTracers')
+local BulletTracersBox = V.Tabs.Visuals:AddLeftGroupbox('BulletTracers')
 
 local BulletTracersToggle = BulletTracersBox:AddToggle('BulletTracers', {
     Text = 'BulletTracers',
@@ -2605,7 +2636,7 @@ BulletTracersBox:AddSlider('TracerDuration', {
 -- CSYNC SETTINGS UI
 -----------------------
 
-local CSyncBox = Tabs.Aimbot:AddRightGroupbox('CSync Settings')
+local CSyncBox = V.Tabs.Aimbot:AddRightGroupbox('CSync Settings')
 
 CSyncBox:AddSlider('CSyncRange', {
     Text = 'Strafe Range',
@@ -2722,7 +2753,7 @@ end
 -- MISC UI (ANTI STOMP)
 -----------------------
 
-V.AntiStompBox = Tabs.Misc:AddLeftGroupbox('Anti Stomp')
+V.AntiStompBox = V.Tabs.Misc:AddLeftGroupbox('Anti Stomp')
 
 V.AntiStompBox:AddToggle('AntiStompEnabled', {
     Text = 'Anti Stomp Enabled',
@@ -2763,7 +2794,7 @@ V.AntiStompBox:AddSlider('AntiStompHealth', {
 })
 
 -- SpeedHack секция
-V.SpeedHackBox = Tabs.Misc:AddRightGroupbox('SpeedHack')
+V.SpeedHackBox = V.Tabs.Misc:AddRightGroupbox('SpeedHack')
 
 V.SpeedHackBox:AddInput('SpeedHackSpeed', {
     Default = '50',
@@ -2822,7 +2853,7 @@ V.SpeedHackBox:AddLabel('SpeedHack Key'):AddKeyPicker('SpeedHackKeybind', {
 })
 
 -- FlyHack секция
-V.FlyHackBox = Tabs.Misc:AddLeftGroupbox('FlyHack')
+V.FlyHackBox = V.Tabs.Misc:AddLeftGroupbox('FlyHack')
 
 V.FlyHackBox:AddInput('FlyHackSpeed', {
     Default = '1',
@@ -2851,7 +2882,7 @@ V.FlyHackBox:AddToggle('FlyHackEnabled', {
 })
 
 -- RAPIDFIRE SECTION -----------------------
-V.RapidFireBox = Tabs.Misc:AddLeftGroupbox('RapidFire')
+V.RapidFireBox = V.Tabs.Misc:AddLeftGroupbox('RapidFire')
 
 V.RapidFireBox:AddToggle('RapidFireEnabled', {
     Text = 'RapidFire',
@@ -2864,7 +2895,7 @@ V.RapidFireBox:AddToggle('RapidFireEnabled', {
 
 
 -- GUN RANGE EXPLOIT SECTION -----------------------
-V.GunRangeBox = Tabs.Misc:AddLeftGroupbox('GunRangeExploit')
+V.GunRangeBox = V.Tabs.Misc:AddLeftGroupbox('GunRangeExploit')
 
 V.GunRangeBox:AddToggle('GunRangeEnabled', {
     Text = 'Gun Range Exploit',
@@ -2923,7 +2954,7 @@ V.FlyHackBox:AddLabel('FlyHack Key'):AddKeyPicker('FlyHackKeybind', {
 })
 
 -- Hide секция
-V.HideBox = Tabs.Misc:AddRightGroupbox('Hide')
+V.HideBox = V.Tabs.Misc:AddRightGroupbox('Hide')
 
 V.HideBox:AddToggle('HideEnabled', {
     Text = 'Hide Enabled',
@@ -2986,8 +3017,8 @@ V.LP.CharacterAdded:Connect(function(char)
     end
 end)
 
-V.Save:BuildConfigSection(Tabs.Config)
-V.ThemeBox = Tabs.Config:AddLeftGroupbox('')
+V.Save:BuildConfigSection(V.Tabs.Config)
+V.ThemeBox = V.Tabs.Config:AddLeftGroupbox('')
 V.Theme:ApplyToGroupbox(V.ThemeBox)
 V.Theme:LoadDefault()
 V.Save:LoadAutoloadConfig()
@@ -3435,7 +3466,7 @@ local function DisableChams()
 end
 
 -- UI Elements
-local ChamsBox = Tabs.Visuals:AddRightGroupbox('Chams')
+local ChamsBox = V.Tabs.Visuals:AddRightGroupbox('Chams')
 local ChamsToggle = ChamsBox:AddToggle('ChamsEnabled', {
     Text = 'Enabled',
     Default = Config.Chams.Enabled,
@@ -3822,7 +3853,7 @@ local function DisableTracers()
 end
 
 -- UI Elements for Tracers
-local TracerBox = Tabs.Visuals:AddRightGroupbox('Tracers')
+local TracerBox = V.Tabs.Visuals:AddRightGroupbox('Tracers')
 local TracerToggle = TracerBox:AddToggle('TracersEnabled',{
     Text='Enabled',
     Default=Config.Tracers.Enabled,
@@ -3923,7 +3954,7 @@ if not Config.SelfAccessoryMaterial then
         Color = Color3.new(1,1,1)
     }
 end
-local SelfMaterialBox = Tabs.Visuals:AddLeftGroupbox('SelfMaterial')
+local SelfMaterialBox = V.Tabs.Visuals:AddLeftGroupbox('SelfMaterial')
 local SelfMaterialToggle = SelfMaterialBox:AddToggle('SelfMaterialEnabled', {
     Text = 'Enabled',
     Default = Config.SelfMaterial.Enabled,
@@ -3966,7 +3997,7 @@ SelfAccessoryToggle:AddColorPicker('SelfAccessoryColor', {
 })
 
 -- SELF HIGHLIGHTS UI
-local SelfHighlightBox = Tabs.Visuals:AddLeftGroupbox('SelfHighlights')
+local SelfHighlightBox = V.Tabs.Visuals:AddLeftGroupbox('SelfHighlights')
 local SelfHighlightToggle = SelfHighlightBox:AddToggle('SelfHighlightEnabled', {
     Text = 'Enabled',
     Default = Config.SelfHighlights.Enabled,
@@ -4200,7 +4231,7 @@ local function DisableNameTags()
 end
 
 -- NAME TAGS UI
-local NameTagsBox = Tabs.Visuals:AddLeftGroupbox('NameTags')
+local NameTagsBox = V.Tabs.Visuals:AddLeftGroupbox('NameTags')
 
 local NameTagsToggle = NameTagsBox:AddToggle('NameTagsEnabled', {
     Text = 'Enabled',
@@ -4401,7 +4432,7 @@ local function UpdateConeHatSides()
 end
 
 -- CONE HAT UI
-local ConeHatBox = Tabs.Visuals:AddLeftGroupbox('Cone Hat')
+local ConeHatBox = V.Tabs.Visuals:AddLeftGroupbox('Cone Hat')
 
 -- Toggle для включения/выключения
 local ConeHatToggle = ConeHatBox:AddToggle('ConeHatEnabled', {
@@ -4769,7 +4800,7 @@ end
 -- REMOVED: Global player connections moved to EnableBoxes/DisableBoxes to prevent memory leaks
 
 -- UI Elements for Boxes
-local BoxesBox = Tabs.Visuals:AddRightGroupbox('Boxes')
+local BoxesBox = V.Tabs.Visuals:AddRightGroupbox('Boxes')
 local BoxesToggle = BoxesBox:AddToggle('BoxesEnabled', {
     Text = 'Enabled',
     Default = Config.Boxes.Enabled,
@@ -4850,7 +4881,7 @@ end
 -- Apply initial settings
 ApplyWorldSettings()
 
-local WorldBox = Tabs.Visuals:AddRightGroupbox('World Settings')
+local WorldBox = V.Tabs.Visuals:AddRightGroupbox('World Settings')
 
 -- create dummy toggle just to host color pickers (UI lib limitation)
 local WorldColorsToggle = WorldBox:AddToggle('WorldColors', {
@@ -4906,7 +4937,7 @@ end
 
 ApplyAmbient()
 
-local AmbientBox = Tabs.Visuals:AddRightGroupbox('Ambient')
+local AmbientBox = V.Tabs.Visuals:AddRightGroupbox('Ambient')
 local AmbientToggle = AmbientBox:AddToggle('AmbientEnabled', {
     Text = 'Enabled',
     Default = Config.Ambient.Enabled,
@@ -4947,7 +4978,7 @@ end
 
 local function SetupShadowsUI()
     ApplyShadows()
-    local ShadowsBox = Tabs.Visuals:AddRightGroupbox('Shadows')
+    local ShadowsBox = V.Tabs.Visuals:AddRightGroupbox('Shadows')
 ShadowsBox:AddToggle('ShadowsEnabled', {
     Text = 'Enabled',
     Default = Config.Shadows.Enabled,
@@ -4996,7 +5027,7 @@ end
 
 local function SetupTimeUI()
     ApplyTime()
-    local TimeBox = Tabs.Visuals:AddRightGroupbox('Time')
+    local TimeBox = V.Tabs.Visuals:AddRightGroupbox('Time')
 TimeBox:AddToggle('TimeEnabled', {
     Text = 'Enabled',
     Default = Config.Time.Enabled,
@@ -5034,6 +5065,242 @@ TimeBox:AddSlider('TimeHours', {
 end
 
 SetupTimeUI()
+
+-- AURA (Visuals) -----------------------
+function V.GetBestAuraAttachment(char)
+    if not char then return nil end
+    local function getAttach(partName, attachName)
+        local part = char:FindFirstChild(partName)
+        if part then return part:FindFirstChild(attachName) end
+        return nil
+    end
+    return 
+        getAttach('UpperTorso','WaistCenterAttachment') or
+        getAttach('UpperTorso','BodyBackAttachment') or
+        getAttach('Torso','WaistCenterAttachment') or
+        getAttach('Torso','BodyBackAttachment') or
+        getAttach('HumanoidRootPart','RootAttachment')
+end
+
+function V.ClearAura()
+    -- destroy previously created emitters
+    for i = 1, #V.AuraEmitters do
+        local e = V.AuraEmitters[i]
+        if e and e.Destroy then pcall(function() e:Destroy() end) end
+    end
+    V.AuraEmitters = {}
+end
+
+function V.GetAuraColorSequence()
+    local c = Config.Aura.Color or Color3.new(1,1,1)
+    return ColorSequence.new({
+        ColorSequenceKeypoint.new(0, c),
+        ColorSequenceKeypoint.new(1, c),
+    })
+end
+
+function V.UpdateAuraColor()
+    local seq = V.GetAuraColorSequence()
+    for i = 1, #V.AuraEmitters do
+        local e = V.AuraEmitters[i]
+        if e and e:IsA('ParticleEmitter') then
+            e.Color = seq
+        end
+    end
+end
+
+function V.CreateHealthAura(attach)
+    if not attach then return end
+    -- Helper to make emitter
+    local function makeEmitter(props)
+        local pe = Instance.new('ParticleEmitter')
+        for k, val in pairs(props) do pe[k] = val end
+        pe.Parent = attach
+        table.insert(V.AuraEmitters, pe)
+        return pe
+    end
+    -- Cubes
+    makeEmitter({
+        Name = 'Cubes',
+        Texture = 'rbxassetid://9470888178',
+        Acceleration = Vector3.new(0,5,0),
+        RotSpeed = NumberRange.new(-300,300),
+        VelocitySpread = 360,
+        Color = V.GetAuraColorSequence(),
+        Drag = 7,
+        ZOffset = 2,
+        Rotation = NumberRange.new(-360,360),
+        LightEmission = 0.6,
+        Lifetime = NumberRange.new(1,1.5),
+        Speed = NumberRange.new(25),
+        SpreadAngle = Vector2.new(360,360),
+        LockedToPart = true,
+        Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0,0),
+            NumberSequenceKeypoint.new(0.25,0.65),
+            NumberSequenceKeypoint.new(1,0)
+        })
+    })
+    -- ShockWave removed
+    -- Light
+    makeEmitter({
+        Name = 'Light',
+        Texture = 'rbxassetid://1075864321',
+        LightEmission = 0.6,
+        EmissionDirection = Enum.NormalId.Front,
+        Lifetime = NumberRange.new(1.3),
+        Speed = NumberRange.new(0.001),
+        Rotation = NumberRange.new(-360,360),
+        Rate = 2,
+        ZOffset = -1,
+        LockedToPart = true,
+        Color = V.GetAuraColorSequence(),
+        Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0,1),
+            NumberSequenceKeypoint.new(0.5,0.74),
+            NumberSequenceKeypoint.new(1,1)
+        }),
+        Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0,4.5),
+            NumberSequenceKeypoint.new(1,4.5)
+        })
+    })
+    -- Stars
+    makeEmitter({
+        Name = 'Stars',
+        Texture = 'rbxassetid://1851669703',
+        LightEmission = 1,
+        EmissionDirection = Enum.NormalId.Front,
+        Lifetime = NumberRange.new(1),
+        Speed = NumberRange.new(0),
+        Rotation = NumberRange.new(-360,360),
+        Rate = 4,
+        ZOffset = 1,
+        LockedToPart = true,
+        Color = V.GetAuraColorSequence(),
+        Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0,1),
+            NumberSequenceKeypoint.new(0.5,0),
+            NumberSequenceKeypoint.new(1,1)
+        }),
+        Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0,2,1),
+            NumberSequenceKeypoint.new(1,2,1)
+        })
+    })
+    -- Health
+    makeEmitter({
+        Name = 'Health',
+        Texture = 'rbxassetid://12072054746',
+        VelocitySpread = 360,
+        RotSpeed = NumberRange.new(-15,15),
+        LightEmission = 0,
+        Drag = 5,
+        ZOffset = 1,
+        SpreadAngle = Vector2.new(360,360),
+        Rotation = NumberRange.new(-5,5),
+        Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0,0),
+            NumberSequenceKeypoint.new(0.5,0),
+            NumberSequenceKeypoint.new(1,0.21)
+        }),
+        Lifetime = NumberRange.new(1),
+        Speed = NumberRange.new(35),
+        Rate = 12,
+        LockedToPart = true,
+        Color = V.GetAuraColorSequence(),
+        Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0,0),
+            NumberSequenceKeypoint.new(0.14,0.81),
+            NumberSequenceKeypoint.new(0.79,0.81),
+            NumberSequenceKeypoint.new(1,0)
+        })
+    })
+    -- Arrow
+    makeEmitter({
+        Name = 'Arrow',
+        Texture = 'rbxassetid://14403995847',
+        Drag = 5,
+        ZOffset = 4,
+        LightEmission = 0,
+        Lifetime = NumberRange.new(1),
+        Speed = NumberRange.new(0.5,1.2),
+        Rate = 10,
+        LockedToPart = true,
+        Color = V.GetAuraColorSequence(),
+        Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0,0),
+            NumberSequenceKeypoint.new(0.14,0.53),
+            NumberSequenceKeypoint.new(0.9,0.56),
+            NumberSequenceKeypoint.new(1,0)
+        })
+    })
+end
+
+function V.BuildAuraForCharacter(char)
+    V.ClearAura()
+    local attach = V.GetBestAuraAttachment(char)
+    if not attach then return end
+    if Config.Aura.Type == 'Health' then
+        V.CreateHealthAura(attach)
+    end
+end
+
+function V.ApplyAura()
+    if not Config.Aura.Enabled then
+        V.ClearAura()
+        return
+    end
+    local char = V.LP and V.LP.Character
+    if char then V.BuildAuraForCharacter(char) end
+end
+
+function V.SetupAuraUI()
+    -- initial apply and connect character changes
+    V.ApplyAura()
+    if V.AuraCharacterConn then V.AuraCharacterConn:Disconnect() end
+    if V.LP then
+        V.AuraCharacterConn = V.LP.CharacterAdded:Connect(function(char)
+            if Config.Aura.Enabled then
+                -- delay to ensure attachments exist
+                task.defer(function() V.ApplyAura() end)
+            end
+        end)
+    end
+
+    local AuraBox = V.Tabs.Visuals:AddRightGroupbox('Aura')
+    local AuraToggle = AuraBox:AddToggle('AuraEnabled', {
+        Text = 'Enabled',
+        Default = Config.Aura.Enabled,
+        Callback = function(v)
+            Config.Aura.Enabled = v
+            V.ApplyAura()
+        end
+    })
+
+    AuraToggle:AddColorPicker('AuraColor', {
+        Default = Config.Aura.Color,
+        Title = 'Color',
+        Transparency = false,
+        Callback = function(c)
+            Config.Aura.Color = c
+            V.UpdateAuraColor()
+        end
+    })
+
+    AuraBox:AddDropdown('AuraType', {
+        Values = {'Health'},
+        Default = Config.Aura.Type,
+        Multi = false,
+        Text = 'Type',
+        Callback = function(val)
+            Config.Aura.Type = val
+            if Config.Aura.Enabled then V.ApplyAura() end
+        end
+    })
+end
+
+V.SetupAuraUI()
 
 WorldBox:AddSlider('WorldHaze', {
     Text = 'Haze',
@@ -5126,7 +5393,7 @@ local function DisableHitbox()
 end
 
 -- UI Elements for ShowHitbox in Aimbot tab
-local HitboxBox = Tabs.Aimbot:AddLeftGroupbox('ShowHitbox')
+local HitboxBox = V.Tabs.Aimbot:AddLeftGroupbox('ShowHitbox')
 local HitboxToggle = HitboxBox:AddToggle('ShowHitboxEnabled', {
     Text = 'ShowHitbox',
     Default = Config.Aimbot.ShowHitbox,
@@ -5158,7 +5425,7 @@ HitboxBox:AddDropdown('HitboxMaterial', {
 -----------------------
 -- HIT SOUND UI
 -----------------------
-local HitSoundBox = Tabs.Aimbot:AddLeftGroupbox('HitSound')
+local HitSoundBox = V.Tabs.Aimbot:AddLeftGroupbox('HitSound')
 
 local HitSoundToggle = HitSoundBox:AddToggle('HitSoundEnabled', {
     Text = 'Enable HitSound',
@@ -5201,6 +5468,9 @@ HitSoundBox:AddSlider('HitSoundPitch', {
         Config.HitSound.Pitch = v
     end
 })
+
+-- форвард-декларация для вызова в Toggle Callback до фактического определения ниже
+local MuteExistingSounds
 
 HitSoundBox:AddToggle('HitSoundMuteOriginal', {
     Text = 'Mute Original Sounds',
@@ -5250,7 +5520,7 @@ local function MuteTargetSound(sound)
 end
 
 -- Блокируем существующие звуки при включении
-local function MuteExistingSounds()
+MuteExistingSounds = function()
     for _, obj in pairs(game:GetDescendants()) do
         if obj:IsA("Sound") then
             MuteTargetSound(obj)
@@ -5433,7 +5703,7 @@ local function ToggleGravity(enabled)
 end
 
 -- Create Gravity UI in Misc tab
-local GravityBox = Tabs.Misc:AddRightGroupbox('Gravity')
+local GravityBox = V.Tabs.Misc:AddRightGroupbox('Gravity')
 
 GravityBox:AddToggle('GravityEnabled', {
     Text = 'Enable Gravity',
