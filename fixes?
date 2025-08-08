@@ -473,20 +473,12 @@ do
             Name = 'Color';
             BackgroundColor3 = Color3.new(1, 1, 1);
             BorderColor3 = Color3.new(0, 0, 0);
-            Position = UDim2.new(0, 4, 0, 0);
-            Size = UDim2.new(1, -13, 0, 253);
+            Position = UDim2.fromOffset(DisplayFrame.AbsolutePosition.X, DisplayFrame.AbsolutePosition.Y + DisplayFrame.AbsoluteSize.Y + 2);
+            Size = UDim2.fromOffset(230, 253);
             Visible = false;
             ZIndex = 15;
-            Parent = Container;
+            Parent = ScreenGui;
         });
-
-        -- Ставим палитру сразу под её контрол через LayoutOrder
-        pcall(function()
-            local parentOfLabel = ToggleLabel and ToggleLabel.Parent
-            if parentOfLabel and typeof(parentOfLabel.LayoutOrder) == 'number' then
-                PickerFrameOuter.LayoutOrder = parentOfLabel.LayoutOrder + 1
-            end
-        end)
 
         local PickerFrameInner = Library:Create('Frame', {
             BackgroundColor3 = Library.BackgroundColor;
@@ -614,6 +606,18 @@ do
             Parent = PickerFrameInner;
         });
 
+        -- Keep floating picker aligned to the color box
+        local function UpdatePickerPosition()
+            PickerFrameOuter.Position = UDim2.fromOffset(
+                DisplayFrame.AbsolutePosition.X,
+                DisplayFrame.AbsolutePosition.Y + DisplayFrame.AbsoluteSize.Y + 2
+            )
+        end
+
+        -- Reposition on movement/resize
+        Library:GiveSignal(DisplayFrame:GetPropertyChangedSignal('AbsolutePosition'):Connect(UpdatePickerPosition))
+        Library:GiveSignal(DisplayFrame:GetPropertyChangedSignal('AbsoluteSize'):Connect(UpdatePickerPosition))
+
 
         Library:AddToRegistry(PickerFrameInner, { BackgroundColor3 = 'BackgroundColor'; BorderColor3 = 'OutlineColor'; });
         Library:AddToRegistry(Highlight, { BackgroundColor3 = 'AccentColor'; });
@@ -680,23 +684,6 @@ do
             Func(ColorPicker.Value)
         end;
 
-        local function UpdateParentScroll()
-            -- Находим родительский ScrollingFrame и перезаписываем CanvasSize
-            local boxInner = Container.Parent
-            local boxOuter = boxInner and boxInner.Parent
-            local side = boxOuter and boxOuter.Parent -- ScrollingFrame
-            if side and side:IsA('ScrollingFrame') then
-                local layout = side:FindFirstChildOfClass('UIListLayout')
-                if layout then
-                    side.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y)
-                    -- Небольшая задержка, чтобы Roblox посчитал размеры
-                    task.defer(function()
-                        side.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y)
-                    end)
-                end
-            end
-        end
-
         function ColorPicker:Show()
             for Frame, Val in next, Library.OpenedFrames do
                 if Frame.Name == 'Color' then
@@ -705,17 +692,14 @@ do
                 end;
             end;
 
+            UpdatePickerPosition()
             PickerFrameOuter.Visible = true;
             Library.OpenedFrames[PickerFrameOuter] = true;
-            if Groupbox and Groupbox.Resize then Groupbox:Resize() end
-            UpdateParentScroll()
         end;
 
         function ColorPicker:Hide()
             PickerFrameOuter.Visible = false;
             Library.OpenedFrames[PickerFrameOuter] = nil;
-            if Groupbox and Groupbox.Resize then Groupbox:Resize() end
-            UpdateParentScroll()
         end;
 
         function ColorPicker:SetValue(HSV)
@@ -774,6 +758,7 @@ do
                 if PickerFrameOuter.Visible then
                     ColorPicker:Hide();
                 else
+                    UpdatePickerPosition()
                     ColorPicker:Show();
                 end;
             end;
@@ -781,11 +766,10 @@ do
 
         Library:GiveSignal(InputService.InputBegan:Connect(function(Input)
             if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                if not PickerFrameOuter.Visible then return end
                 local AbsPos, AbsSize = PickerFrameOuter.AbsolutePosition, PickerFrameOuter.AbsoluteSize;
-
                 if Mouse.X < AbsPos.X or Mouse.X > AbsPos.X + AbsSize.X
-                    or Mouse.Y < (AbsPos.Y - 20 - 1) or Mouse.Y > AbsPos.Y + AbsSize.Y then
-
+                    or Mouse.Y < AbsPos.Y or Mouse.Y > AbsPos.Y + AbsSize.Y then
                     ColorPicker:Hide();
                 end;
             end;
@@ -2939,9 +2923,6 @@ function Library:CreateWindow(...)
 			BottomImage = '';
 			TopImage = '';
 			ScrollBarThickness = 0;
-			Active = true;
-			ScrollingEnabled = true;
-			ScrollingDirection = Enum.ScrollingDirection.Y;
 			ZIndex = 2;
 			Parent = TabFrame;
 		});
@@ -2956,9 +2937,6 @@ function Library:CreateWindow(...)
 			BottomImage = '';
 			TopImage = '';
 			ScrollBarThickness = 0;
-			Active = true;
-			ScrollingEnabled = true;
-			ScrollingDirection = Enum.ScrollingDirection.Y;
 			ZIndex = 2;
 			Parent = TabFrame;
 		});
