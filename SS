@@ -5256,14 +5256,14 @@ V.NameTagsConnections = {}
 
 local function CreateNameTag(player)
     if not player.Character then return nil end
-    local head = player.Character:FindFirstChild('Head')
-    if not head then return nil end
-    local bb = Instance.new('BillboardGui')
-    bb.Name = 'NameTag'
-    bb.Adornee = head
-    bb.Size = UDim2.new(0, 200, 0, 30)
-            bb.StudsOffset = Vector3.new(0, 1.5, 0)
-    bb.AlwaysOnTop = true
+    V.Temp.NameTagHead = player.Character:FindFirstChild('Head')
+    if not V.Temp.NameTagHead then return nil end
+    V.Temp.NameTagBB = Instance.new('BillboardGui')
+    V.Temp.NameTagBB.Name = 'NameTag'
+    V.Temp.NameTagBB.Adornee = V.Temp.NameTagHead
+    V.Temp.NameTagBB.Size = UDim2.new(0, 200, 0, 30)
+    V.Temp.NameTagBB.StudsOffset = Vector3.new(0, 1.5, 0)
+    V.Temp.NameTagBB.AlwaysOnTop = true
     V.TempNameLabel = Instance.new('TextLabel')
     V.TempNameLabel.Size = UDim2.new(1, 0, 1, 0)
     V.TempNameLabel.BackgroundTransparency = Config.NameTags.BackgroundTransparency
@@ -5276,27 +5276,27 @@ local function CreateNameTag(player)
     V.TempNameLabel.TextStrokeTransparency = 0.5
     V.TempNameLabel.TextColor3 = Config.NameTags.Color
         V.TempNameLabel.Text = Config.NameTags.UseDisplayName and player.DisplayName or player.Name
-    V.TempNameLabel.Parent = bb
+    V.TempNameLabel.Parent = V.Temp.NameTagBB
         -- Hide default Roblox overhead names
     if player.Character and player.Character:FindFirstChild('Humanoid') then
-            local hum = player.Character.Humanoid
-        hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+        V.Temp.NameTagHum = player.Character.Humanoid
+        V.Temp.NameTagHum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
         -- If Roblox suddenly re-enables name display (e.g., after death), immediately disable
         if V.NameTagsConnections["HumanoidDDT_"..player.UserId] then
             V.NameTagsConnections["HumanoidDDT_"..player.UserId]:Disconnect()
         end
-        V.NameTagsConnections["HumanoidDDT_"..player.UserId] = hum:GetPropertyChangedSignal("DisplayDistanceType"):Connect(function()
-            local humanoid = player.Character.Humanoid
-            humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-            hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+        V.NameTagsConnections["HumanoidDDT_"..player.UserId] = V.Temp.NameTagHum:GetPropertyChangedSignal("DisplayDistanceType"):Connect(function()
+            V.Temp.NameTagHumanoid = player.Character.Humanoid
+            V.Temp.NameTagHumanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+            V.Temp.NameTagHum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
         end)
         -- При смерти тоже убеждаемся, что ник не появится
-        hum.Died:Connect(function()
-            hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+        V.Temp.NameTagHum.Died:Connect(function()
+            V.Temp.NameTagHum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
         end)
     end
-    bb.Parent = head
-    return bb
+    V.Temp.NameTagBB.Parent = V.Temp.NameTagHead
+    return V.Temp.NameTagBB
 end
 
 local function UpdateNameTag(bb, player, distance)
@@ -5311,8 +5311,8 @@ local function UpdateNameTag(bb, player, distance)
     end
     V.TempNameLabel.Text = table.concat(V.NameTagParts, ' ')
     -- Динамический подъём неймтега, чтобы быть над Box ESP
-        local dynOffsetY = math.clamp(distance / 25, 1.5, 6)
-    if bb then bb.StudsOffset = Vector3.new(0, dynOffsetY, 0) end
+    V.Temp.DynOffsetY = math.clamp(distance / 25, 1.5, 6)
+    if bb then bb.StudsOffset = Vector3.new(0, V.Temp.DynOffsetY, 0) end
     V.TempNameLabel.TextColor3 = Config.NameTags.Color
     V.TempNameLabel.BackgroundTransparency = Config.NameTags.BackgroundTransparency
     V.TempNameLabel.TextSize = 14 * Config.NameTags.Scale
@@ -5354,8 +5354,8 @@ local function EnableNameTags()
         V.NameTagsConnections[plr] = plr.CharacterAdded:Connect(function(char)
             if Config.NameTags.Enabled then
                 RemoveNameTag(plr)
-                local bb = CreateNameTag(plr)
-                if bb then V.NameTags[plr] = bb end
+                V.Temp.NameTagBB = CreateNameTag(plr)
+                if V.Temp.NameTagBB then V.NameTags[plr] = V.Temp.NameTagBB end
             end
         end)
     end)
@@ -5370,8 +5370,8 @@ local function EnableNameTags()
                 end)
                 if Config.NameTags.Enabled then
                     RemoveNameTag(plr)
-                    local bb = CreateNameTag(plr)
-                    if bb then V.NameTags[plr] = bb end
+                    V.Temp.NameTagBB = CreateNameTag(plr)
+                    if V.Temp.NameTagBB then V.NameTags[plr] = V.Temp.NameTagBB end
                 end
             end)
         end
@@ -5380,21 +5380,21 @@ local function EnableNameTags()
 
     V.NameTagsConnections.Render = V.RS.RenderStepped:Connect(function()
         if not Config.NameTags.Enabled then return end
-        local lpChar = V.LP.Character
-        if not lpChar or not lpChar:FindFirstChild('HumanoidRootPart') then return end
-        local lpPos = lpChar.HumanoidRootPart.Position
+        V.Temp.LpChar = V.LP.Character
+        if not V.Temp.LpChar or not V.Temp.LpChar:FindFirstChild('HumanoidRootPart') then return end
+        V.Temp.LpPos = V.Temp.LpChar.HumanoidRootPart.Position
         for _, plr in ipairs(V.Players:GetPlayers()) do
             if plr ~= V.LP and plr.Character and plr.Character:FindFirstChild('HumanoidRootPart') then
-                local dist = (lpPos - plr.Character.HumanoidRootPart.Position).Magnitude
-                if Config.NameTags.DistanceCheck and (dist < Config.NameTags.DistanceMin or dist > Config.NameTags.DistanceMax) then
+                V.Temp.NameTagDist = (V.Temp.LpPos - plr.Character.HumanoidRootPart.Position).Magnitude
+                if Config.NameTags.DistanceCheck and (V.Temp.NameTagDist < Config.NameTags.DistanceMin or V.Temp.NameTagDist > Config.NameTags.DistanceMax) then
                     RemoveNameTag(plr)
                 else
                     if not V.NameTags[plr] then
-                        local bb = CreateNameTag(plr)
-                        if bb then V.NameTags[plr] = bb end
+                        V.Temp.NameTagBB = CreateNameTag(plr)
+                        if V.Temp.NameTagBB then V.NameTags[plr] = V.Temp.NameTagBB end
                     end
                     if V.NameTags[plr] then
-                        UpdateNameTag(V.NameTags[plr], plr, math.floor(dist))
+                        UpdateNameTag(V.NameTags[plr], plr, math.floor(V.Temp.NameTagDist))
                     end
                 end
             end
@@ -5504,7 +5504,7 @@ local function InitializeConeHat()
 end
 
 local function UpdateConeHat()
-    local pass = Config.ConeHat.Enabled and 
+    V.Temp.ConePass = Config.ConeHat.Enabled and 
                 V.LP.Character and 
                 V.LP.Character:FindFirstChild("Head") ~= nil and
                 (V.Cam.CFrame.p - V.Cam.Focus.p).Magnitude > Config.ConeHat.MinCameraDistance and
@@ -5512,64 +5512,64 @@ local function UpdateConeHat()
                 V.LP.Character.Humanoid.Health > 0
                 
     for i = 1, #V.ConeHatDrawings do
-        local line, triangle = V.ConeHatDrawings[i][1], V.ConeHatDrawings[i][2]
-        if pass then
-            local color
+        V.Temp.ConeLine, V.Temp.ConeTriangle = V.ConeHatDrawings[i][1], V.ConeHatDrawings[i][2]
+        if V.Temp.ConePass then
+            V.Temp.ConeColor = nil
             
             if Config.ConeHat.ColorMode == 'Rainbow' then
                 -- Радужный режим
-                color = Color3.fromHSV((tick() % 5 / 5 - (i / #V.ConeHatDrawings)) % 1, 0.5, 1)
+                V.Temp.ConeColor = Color3.fromHSV((tick() % 5 / 5 - (i / #V.ConeHatDrawings)) % 1, 0.5, 1)
             else
                 -- Custom режим с анимированным градиентом (вращается подобно радужному)
-                local progress = i / #V.ConeHatDrawings
+                V.Temp.ConeProgress = i / #V.ConeHatDrawings
                 -- Смещаем прогресс во времени, чтобы градиент «крутился»
-                local shift = (tick() % 5) / 5 -- Период 5 секунд; меняйте при желании
-                local phase = (progress + shift) % 1
+                V.Temp.ConeShift = (tick() % 5) / 5 -- Период 5 секунд; меняйте при желании
+                V.Temp.ConePhase = (V.Temp.ConeProgress + V.Temp.ConeShift) % 1
 
-                if phase < 0.33 then
+                if V.Temp.ConePhase < 0.33 then
                     -- Интерполяция между Color1 и Color2
-                    local t = phase / 0.33
-                    color = Config.ConeHat.GradientColor1:Lerp(Config.ConeHat.GradientColor2, t)
-                elseif phase < 0.66 then
+                    V.Temp.ConeT = V.Temp.ConePhase / 0.33
+                    V.Temp.ConeColor = Config.ConeHat.GradientColor1:Lerp(Config.ConeHat.GradientColor2, V.Temp.ConeT)
+                elseif V.Temp.ConePhase < 0.66 then
                     -- Интерполяция между Color2 и Color3
-                    local t = (phase - 0.33) / 0.33
-                    color = Config.ConeHat.GradientColor2:Lerp(Config.ConeHat.GradientColor3, t)
+                    V.Temp.ConeT = (V.Temp.ConePhase - 0.33) / 0.33
+                    V.Temp.ConeColor = Config.ConeHat.GradientColor2:Lerp(Config.ConeHat.GradientColor3, V.Temp.ConeT)
                 else
                     -- Интерполяция между Color3 и Color1 (замыкание круга)
-                    local t = (phase - 0.66) / 0.34
-                    color = Config.ConeHat.GradientColor3:Lerp(Config.ConeHat.GradientColor1, t)
+                    V.Temp.ConeT = (V.Temp.ConePhase - 0.66) / 0.34
+                    V.Temp.ConeColor = Config.ConeHat.GradientColor3:Lerp(Config.ConeHat.GradientColor1, V.Temp.ConeT)
                 end
             end
                          
-            local pos = V.LP.Character.Head.Position + Config.ConeHat.Offset
-            local topWorld = pos + V.V3(0, Config.ConeHat.Height, 0)
+            V.Temp.ConePos = V.LP.Character.Head.Position + Config.ConeHat.Offset
+            V.Temp.ConeTopWorld = V.Temp.ConePos + V.V3(0, Config.ConeHat.Height, 0)
             
-            local tau = math.pi * 2
-            local last = (i / Config.ConeHat.Sides) * tau
-            local next = ((i + 1) / Config.ConeHat.Sides) * tau
+            V.Temp.ConeTau = math.pi * 2
+            V.Temp.ConeLast = (i / Config.ConeHat.Sides) * V.Temp.ConeTau
+            V.Temp.ConeNext = ((i + 1) / Config.ConeHat.Sides) * V.Temp.ConeTau
             
-            local lastWorld = pos + (V.V3(math.cos(last), 0, math.sin(last)) * Config.ConeHat.Radius)
-            local nextWorld = pos + (V.V3(math.cos(next), 0, math.sin(next)) * Config.ConeHat.Radius)
+            V.Temp.ConeLastWorld = V.Temp.ConePos + (V.V3(math.cos(V.Temp.ConeLast), 0, math.sin(V.Temp.ConeLast)) * Config.ConeHat.Radius)
+            V.Temp.ConeNextWorld = V.Temp.ConePos + (V.V3(math.cos(V.Temp.ConeNext), 0, math.sin(V.Temp.ConeNext)) * Config.ConeHat.Radius)
             
-            local lastScreen = V.Cam:WorldToViewportPoint(lastWorld)
-            local nextScreen = V.Cam:WorldToViewportPoint(nextWorld)
-            local topScreen = V.Cam:WorldToViewportPoint(topWorld)
+            V.Temp.ConeLastScreen = V.Cam:WorldToViewportPoint(V.Temp.ConeLastWorld)
+            V.Temp.ConeNextScreen = V.Cam:WorldToViewportPoint(V.Temp.ConeNextWorld)
+            V.Temp.ConeTopScreen = V.Cam:WorldToViewportPoint(V.Temp.ConeTopWorld)
             
-            line.From = V.V2(lastScreen.X, lastScreen.Y)
-            line.To = V.V2(nextScreen.X, nextScreen.Y)
-            line.Color = color
-            line.Transparency = Config.ConeHat.CircleTransparency
-            line.Visible = true
+            V.Temp.ConeLine.From = V.V2(V.Temp.ConeLastScreen.X, V.Temp.ConeLastScreen.Y)
+            V.Temp.ConeLine.To = V.V2(V.Temp.ConeNextScreen.X, V.Temp.ConeNextScreen.Y)
+            V.Temp.ConeLine.Color = V.Temp.ConeColor
+            V.Temp.ConeLine.Transparency = Config.ConeHat.CircleTransparency
+            V.Temp.ConeLine.Visible = true
             
-            triangle.PointA = V.V2(topScreen.X, topScreen.Y)
-            triangle.PointB = line.From
-            triangle.PointC = line.To
-            triangle.Color = color
-            triangle.Transparency = Config.ConeHat.HatTransparency
-            triangle.Visible = true
+            V.Temp.ConeTriangle.PointA = V.V2(V.Temp.ConeTopScreen.X, V.Temp.ConeTopScreen.Y)
+            V.Temp.ConeTriangle.PointB = V.Temp.ConeLine.From
+            V.Temp.ConeTriangle.PointC = V.Temp.ConeLine.To
+            V.Temp.ConeTriangle.Color = V.Temp.ConeColor
+            V.Temp.ConeTriangle.Transparency = Config.ConeHat.HatTransparency
+            V.Temp.ConeTriangle.Visible = true
         else
-            line.Visible = false
-            triangle.Visible = false
+            V.Temp.ConeLine.Visible = false
+            V.Temp.ConeTriangle.Visible = false
         end
     end
 end
@@ -6107,8 +6107,8 @@ end
 local function UpdateBoxESP(player)
     if not V.BoxesCache[player] then return end
     
-    local character = player.Character
-    if not character then
+    V.Temp.Character = player.Character
+    if not V.Temp.Character then
         V.BoxesCache[player].Main.Visible = false
         V.BoxesCache[player].Outline.Visible = false
         V.BoxesCache[player].HealthBar.Main.Visible = false
@@ -6116,8 +6116,8 @@ local function UpdateBoxESP(player)
         return
     end
     
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not humanoid or humanoid.Health <= 0 then
+    V.Temp.Humanoid = V.Temp.Character:FindFirstChildOfClass("Humanoid")
+    if not V.Temp.Humanoid or V.Temp.Humanoid.Health <= 0 then
         V.BoxesCache[player].Main.Visible = false
         V.BoxesCache[player].Outline.Visible = false
         V.BoxesCache[player].HealthBar.Main.Visible = false
@@ -6125,9 +6125,9 @@ local function UpdateBoxESP(player)
         return
     end
     
-    local rootPart = character:FindFirstChild('HumanoidRootPart')
+    V.Temp.RootPart = V.Temp.Character:FindFirstChild('HumanoidRootPart')
     
-    if not (rootPart and humanoid) then
+    if not (V.Temp.RootPart and V.Temp.Humanoid) then
         V.BoxesCache[player].Main.Visible = false
         V.BoxesCache[player].Outline.Visible = false
         V.BoxesCache[player].HealthBar.Main.Visible = false
@@ -6136,12 +6136,12 @@ local function UpdateBoxESP(player)
     end
     
     -- Check distance before doing any rendering
-    local localChar = V.LP.Character
-    local localRoot = localChar and localChar:FindFirstChild('HumanoidRootPart')
-    if not localRoot then return end
+    V.Temp.LocalChar = V.LP.Character
+    V.Temp.LocalRoot = V.Temp.LocalChar and V.Temp.LocalChar:FindFirstChild('HumanoidRootPart')
+    if not V.Temp.LocalRoot then return end
     
-    local distance = (rootPart.Position - localRoot.Position).Magnitude
-    if distance > Config.Boxes.MaxDistance then
+    V.Temp.Distance = (V.Temp.RootPart.Position - V.Temp.LocalRoot.Position).Magnitude
+    if V.Temp.Distance > Config.Boxes.MaxDistance then
         V.BoxesCache[player].Main.Visible = false
         V.BoxesCache[player].Outline.Visible = false
         V.BoxesCache[player].HealthBar.Main.Visible = false
@@ -6149,7 +6149,7 @@ local function UpdateBoxESP(player)
         return
     end
     
-    V.ScreenPoint, V.OnScreen = V.Cam:WorldToViewportPoint(rootPart.Position)
+    V.ScreenPoint, V.OnScreen = V.Cam:WorldToViewportPoint(V.Temp.RootPart.Position)
     
     if not V.OnScreen then
         V.BoxesCache[player].Main.Visible = false
@@ -6160,36 +6160,36 @@ local function UpdateBoxESP(player)
     end
     
     -- Calculate character bounds
-    local minX, maxX = math.huge, -math.huge
-    local minY, maxY = math.huge, -math.huge
-    local validParts = 0
+    V.Temp.MinX, V.Temp.MaxX = math.huge, -math.huge
+    V.Temp.MinY, V.Temp.MaxY = math.huge, -math.huge
+    V.Temp.ValidParts = 0
     
     -- Если игрок в состоянии KO, используем упрощённый бокс (только HRP)
     if IsPlayerKO(player) then
-        validParts = 0
+        V.Temp.ValidParts = 0
     else
-        for _, part in pairs(character:GetChildren()) do
-        if part:IsA("BasePart") and part ~= rootPart then
-            local partPos, partVis = V.Cam:WorldToViewportPoint(part.Position)
-            if partVis then
+        for _, part in pairs(V.Temp.Character:GetChildren()) do
+        if part:IsA("BasePart") and part ~= V.Temp.RootPart then
+            V.Temp.PartPos, V.Temp.PartVis = V.Cam:WorldToViewportPoint(part.Position)
+            if V.Temp.PartVis then
                 -- Calculate part bounds with size consideration
-                local partSize = part.Size
-                local halfX = (partSize.X * 50) / partPos.Z -- Scale factor for screen space
-                local halfY = (partSize.Y * 50) / partPos.Z
+                V.Temp.PartSize = part.Size
+                V.Temp.HalfX = (V.Temp.PartSize.X * 50) / V.Temp.PartPos.Z -- Scale factor for screen space
+                V.Temp.HalfY = (V.Temp.PartSize.Y * 50) / V.Temp.PartPos.Z
                 
-                minX = math.min(minX, partPos.X - halfX)
-                maxX = math.max(maxX, partPos.X + halfX)
-                minY = math.min(minY, partPos.Y - halfY)
-                maxY = math.max(maxY, partPos.Y + halfY)
-                validParts = validParts + 1
+                V.Temp.MinX = math.min(V.Temp.MinX, V.Temp.PartPos.X - V.Temp.HalfX)
+                V.Temp.MaxX = math.max(V.Temp.MaxX, V.Temp.PartPos.X + V.Temp.HalfX)
+                V.Temp.MinY = math.min(V.Temp.MinY, V.Temp.PartPos.Y - V.Temp.HalfY)
+                V.Temp.MaxY = math.max(V.Temp.MaxY, V.Temp.PartPos.Y + V.Temp.HalfY)
+                V.Temp.ValidParts = V.Temp.ValidParts + 1
             end
         end
         end
     end
     
     -- Fallback to root part если в KO или не найдено валидных частей
-    if validParts == 0 then
-        V.ScreenPoint, V.OnScreen = V.Cam:WorldToViewportPoint(rootPart.Position)
+    if V.Temp.ValidParts == 0 then
+        V.ScreenPoint, V.OnScreen = V.Cam:WorldToViewportPoint(V.Temp.RootPart.Position)
         if not V.OnScreen then
             V.BoxesCache[player].Main.Visible = false
             V.BoxesCache[player].Outline.Visible = false
@@ -6198,61 +6198,61 @@ local function UpdateBoxESP(player)
             return
         end
         -- Use fallback sizing
-        local fallbackSize = V.V2(
+        V.Temp.FallbackSize = V.V2(
             math.floor(2200 / V.ScreenPoint.Z),
             math.floor(3200 / V.ScreenPoint.Z)
         )
-        minX = V.ScreenPoint.X - fallbackSize.X / 2
-        maxX = V.ScreenPoint.X + fallbackSize.X / 2
-        minY = V.ScreenPoint.Y - fallbackSize.Y / 2
-        maxY = V.ScreenPoint.Y + fallbackSize.Y / 2
+        V.Temp.MinX = V.ScreenPoint.X - V.Temp.FallbackSize.X / 2
+        V.Temp.MaxX = V.ScreenPoint.X + V.Temp.FallbackSize.X / 2
+        V.Temp.MinY = V.ScreenPoint.Y - V.Temp.FallbackSize.Y / 2
+        V.Temp.MaxY = V.ScreenPoint.Y + V.Temp.FallbackSize.Y / 2
     end
     
     -- Add padding
-    local padding = 5
-    minX = minX - padding
-    maxX = maxX + padding
-    minY = minY - padding
-    maxY = maxY + padding
+    V.Temp.Padding = 5
+    V.Temp.MinX = V.Temp.MinX - V.Temp.Padding
+    V.Temp.MaxX = V.Temp.MaxX + V.Temp.Padding
+    V.Temp.MinY = V.Temp.MinY - V.Temp.Padding
+    V.Temp.MaxY = V.Temp.MaxY + V.Temp.Padding
     
     -- Calculate final box dimensions
-    local size = Vector2.new(
-        math.floor(maxX - minX),
-        math.floor(maxY - minY)
+    V.Temp.Size = Vector2.new(
+        math.floor(V.Temp.MaxX - V.Temp.MinX),
+        math.floor(V.Temp.MaxY - V.Temp.MinY)
     )
     
-    local boxPosition = Vector2.new(
-        math.floor(minX),
-        math.floor(minY)
+    V.Temp.BoxPosition = Vector2.new(
+        math.floor(V.Temp.MinX),
+        math.floor(V.Temp.MinY)
     )
     
     -- Update main box
     V.BoxesCache[player].Main.Visible = Config.Boxes.Enabled
-    V.BoxesCache[player].Main.Position = boxPosition
-    V.BoxesCache[player].Main.Size = size
+    V.BoxesCache[player].Main.Position = V.Temp.BoxPosition
+    V.BoxesCache[player].Main.Size = V.Temp.Size
     V.BoxesCache[player].Main.Color = Config.Boxes.Color
     V.BoxesCache[player].Main.Thickness = Config.Boxes.Thickness
     V.BoxesCache[player].Main.Filled = false
     
     V.BoxesCache[player].Outline.Visible = Config.Boxes.Enabled
-    V.BoxesCache[player].Outline.Position = boxPosition - Vector2.new(1, 1)
-    V.BoxesCache[player].Outline.Size = size + Vector2.new(2, 2)
+    V.BoxesCache[player].Outline.Position = V.Temp.BoxPosition - Vector2.new(1, 1)
+    V.BoxesCache[player].Outline.Size = V.Temp.Size + Vector2.new(2, 2)
     
     -- Update HealthBar
     if Config.Boxes.HealthBarEnabled and Config.Boxes.Enabled then
-        local healthPercent = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
-        local healthBarHeight = math.floor(size.Y * healthPercent)
+        V.Temp.HealthPercent = math.clamp(V.Temp.Humanoid.Health / V.Temp.Humanoid.MaxHealth, 0, 1)
+        V.Temp.HealthBarHeight = math.floor(V.Temp.Size.Y * V.Temp.HealthPercent)
         
-        local healthBarPosition = boxPosition - Vector2.new(Config.Boxes.HealthBarWidth + 4, 0)
+        V.Temp.HealthBarPosition = V.Temp.BoxPosition - Vector2.new(Config.Boxes.HealthBarWidth + 4, 0)
         
         V.BoxesCache[player].HealthBar.Outline.Visible = true
-        V.BoxesCache[player].HealthBar.Outline.Position = healthBarPosition
-        V.BoxesCache[player].HealthBar.Outline.Size = Vector2.new(Config.Boxes.HealthBarWidth, size.Y + 1)
+        V.BoxesCache[player].HealthBar.Outline.Position = V.Temp.HealthBarPosition
+        V.BoxesCache[player].HealthBar.Outline.Size = Vector2.new(Config.Boxes.HealthBarWidth, V.Temp.Size.Y + 1)
         V.BoxesCache[player].HealthBar.Outline.Color = Config.Boxes.HealthBarBgColor
         
         V.BoxesCache[player].HealthBar.Main.Visible = true
-        V.BoxesCache[player].HealthBar.Main.Position = healthBarPosition + Vector2.new(0, size.Y - healthBarHeight)
-        V.BoxesCache[player].HealthBar.Main.Size = Vector2.new(Config.Boxes.HealthBarWidth, healthBarHeight)
+        V.BoxesCache[player].HealthBar.Main.Position = V.Temp.HealthBarPosition + Vector2.new(0, V.Temp.Size.Y - V.Temp.HealthBarHeight)
+        V.BoxesCache[player].HealthBar.Main.Size = Vector2.new(Config.Boxes.HealthBarWidth, V.Temp.HealthBarHeight)
         V.BoxesCache[player].HealthBar.Main.Color = Config.Boxes.HealthBarColor
     else
         V.BoxesCache[player].HealthBar.Main.Visible = false
@@ -6402,14 +6402,14 @@ if Config.Boxes.Enabled then EnableBoxes() end
 
 -- WORLD SETTINGS UI
 local function ApplyWorldSettings()
-    local atmosphere = game:GetService('Lighting'):FindFirstChildOfClass('Atmosphere')
-    if not atmosphere then return end
-    atmosphere.Color = Config.WorldSettings.Color
-    atmosphere.Decay = Config.WorldSettings.Decay
-    atmosphere.Glare = Config.WorldSettings.Glare
-    atmosphere.Haze = Config.WorldSettings.Haze
-    atmosphere.Density = Config.WorldSettings.Density
-    atmosphere.Offset = Config.WorldSettings.Offset
+    V.Temp.Atmosphere = game:GetService('Lighting'):FindFirstChildOfClass('Atmosphere')
+    if not V.Temp.Atmosphere then return end
+    V.Temp.Atmosphere.Color = Config.WorldSettings.Color
+    V.Temp.Atmosphere.Decay = Config.WorldSettings.Decay
+    V.Temp.Atmosphere.Glare = Config.WorldSettings.Glare
+    V.Temp.Atmosphere.Haze = Config.WorldSettings.Haze
+    V.Temp.Atmosphere.Density = Config.WorldSettings.Density
+    V.Temp.Atmosphere.Offset = Config.WorldSettings.Offset
 end
 
 -- Apply initial settings
@@ -6461,11 +6461,11 @@ WorldBox:AddSlider('WorldGlare', {
 local OriginalAmbient = game:GetService('Lighting').Ambient
 
 local function ApplyAmbient()
-    local lighting = game:GetService('Lighting')
+    V.Temp.Lighting = game:GetService('Lighting')
     if Config.Ambient.Enabled then
-        lighting.Ambient = Config.Ambient.Color
+        V.Temp.Lighting.Ambient = Config.Ambient.Color
     else
-        lighting.Ambient = OriginalAmbient
+        V.Temp.Lighting.Ambient = OriginalAmbient
     end
 end
 
@@ -6493,33 +6493,33 @@ AmbientToggle:AddColorPicker('AmbientColor', {
 
 -- TRAILS SETTINGS UI
 local function ApplyTrail()
-    local lp = V.LP
-    local char = lp and lp.Character
-    local hrp = char and char:FindFirstChild('HumanoidRootPart')
+    V.Temp.TrailLp = V.LP
+    V.Temp.TrailChar = V.Temp.TrailLp and V.Temp.TrailLp.Character
+    V.Temp.TrailHrp = V.Temp.TrailChar and V.Temp.TrailChar:FindFirstChild('HumanoidRootPart')
 
-    if not Config.Trails.Enabled or not hrp then
+    if not Config.Trails.Enabled or not V.Temp.TrailHrp then
         if V.TrailInstance then V.TrailInstance.Enabled = false end
         return
     end
 
     -- Ensure attachments
-    if not V.TrailAttach0 or V.TrailAttach0.Parent ~= hrp then
+    if not V.TrailAttach0 or V.TrailAttach0.Parent ~= V.Temp.TrailHrp then
         V.TrailAttach0 = Instance.new('Attachment')
         V.TrailAttach0.Name = 'SimpleBotTrailA0'
         V.TrailAttach0.Position = Vector3.new(0.5, 0, 0)
-        V.TrailAttach0.Parent = hrp
+        V.TrailAttach0.Parent = V.Temp.TrailHrp
     end
-    if not V.TrailAttach1 or V.TrailAttach1.Parent ~= hrp then
+    if not V.TrailAttach1 or V.TrailAttach1.Parent ~= V.Temp.TrailHrp then
         V.TrailAttach1 = Instance.new('Attachment')
         V.TrailAttach1.Name = 'SimpleBotTrailA1'
         V.TrailAttach1.Position = Vector3.new(-0.5, 0, 0)
-        V.TrailAttach1.Parent = hrp
+        V.TrailAttach1.Parent = V.Temp.TrailHrp
     end
 
-    if not V.TrailInstance or V.TrailInstance.Parent ~= hrp then
+    if not V.TrailInstance or V.TrailInstance.Parent ~= V.Temp.TrailHrp then
         V.TrailInstance = Instance.new('Trail')
         V.TrailInstance.Name = 'SimpleBotTrail'
-        V.TrailInstance.Parent = hrp
+        V.TrailInstance.Parent = V.Temp.TrailHrp
     end
 
     -- Apply properties
@@ -6600,27 +6600,27 @@ SetupTrailsUI()
 
 -- BLOOM SETTINGS UI
 local function ApplyBloom()
-    local lighting = game:GetService('Lighting')
-    local bloom = lighting:FindFirstChild('SimpleBotBloom')
+    V.Temp.BloomLighting = game:GetService('Lighting')
+    V.Temp.Bloom = V.Temp.BloomLighting:FindFirstChild('SimpleBotBloom')
     if not Config.Bloom.Enabled then
-        if bloom then bloom.Enabled = false end
+        if V.Temp.Bloom then V.Temp.Bloom.Enabled = false end
         return
     end
-    if not bloom then
-        bloom = Instance.new('BloomEffect')
-        bloom.Name = 'SimpleBotBloom'
-        bloom.Parent = lighting
+    if not V.Temp.Bloom then
+        V.Temp.Bloom = Instance.new('BloomEffect')
+        V.Temp.Bloom.Name = 'SimpleBotBloom'
+        V.Temp.Bloom.Parent = V.Temp.BloomLighting
     end
-    bloom.Enabled = true
-    bloom.Intensity = Config.Bloom.Intensity
-    bloom.Threshold = Config.Bloom.Threshold
-    bloom.Size = Config.Bloom.Size
+    V.Temp.Bloom.Enabled = true
+    V.Temp.Bloom.Intensity = Config.Bloom.Intensity
+    V.Temp.Bloom.Threshold = Config.Bloom.Threshold
+    V.Temp.Bloom.Size = Config.Bloom.Size
 end
 
 local function SetupBloomUI()
     ApplyBloom()
-    local BloomBox = V.Tabs.Visuals:AddRightGroupbox('Bloom')
-BloomBox:AddToggle('BloomEnabled', {
+    V.Temp.BloomBox = V.Tabs.Visuals:AddRightGroupbox('Bloom')
+V.Temp.BloomBox:AddToggle('BloomEnabled', {
     Text = 'Enabled',
     Default = Config.Bloom.Enabled,
     Callback = function(v)
@@ -6629,7 +6629,7 @@ BloomBox:AddToggle('BloomEnabled', {
     end
 })
 
-BloomBox:AddSlider('BloomIntensity', {
+V.Temp.BloomBox:AddSlider('BloomIntensity', {
     Text = 'Intensity',
     Default = Config.Bloom.Intensity,
     Min = 0,
@@ -6642,7 +6642,7 @@ BloomBox:AddSlider('BloomIntensity', {
     end
 })
 
-BloomBox:AddSlider('BloomThreshold', {
+V.Temp.BloomBox:AddSlider('BloomThreshold', {
     Text = 'Threshold',
     Default = Config.Bloom.Threshold,
     Min = 0,
@@ -6655,7 +6655,7 @@ BloomBox:AddSlider('BloomThreshold', {
     end
 })
 
-BloomBox:AddSlider('BloomSize', {
+V.Temp.BloomBox:AddSlider('BloomSize', {
     Text = 'Size',
     Default = Config.Bloom.Size,
     Min = 0,
@@ -6673,28 +6673,28 @@ SetupBloomUI()
 
 -- COLOR CORRECTION SETTINGS UI
 local function ApplyColorCorrection()
-    local lighting = game:GetService('Lighting')
-    local cc = lighting:FindFirstChild('SimpleBotColorCorrection')
+    V.Temp.CCLighting = game:GetService('Lighting')
+    V.Temp.CC = V.Temp.CCLighting:FindFirstChild('SimpleBotColorCorrection')
     if not Config.ColorCorrection.Enabled then
-        if cc then cc.Enabled = false end
+        if V.Temp.CC then V.Temp.CC.Enabled = false end
         return
     end
-    if not cc then
-        cc = Instance.new('ColorCorrectionEffect')
-        cc.Name = 'SimpleBotColorCorrection'
-        cc.Parent = lighting
+    if not V.Temp.CC then
+        V.Temp.CC = Instance.new('ColorCorrectionEffect')
+        V.Temp.CC.Name = 'SimpleBotColorCorrection'
+        V.Temp.CC.Parent = V.Temp.CCLighting
     end
-    cc.Enabled = true
-    cc.Brightness = Config.ColorCorrection.Brightness
-    cc.Contrast = Config.ColorCorrection.Contrast
-    cc.Saturation = Config.ColorCorrection.Saturation
-    cc.TintColor = Config.ColorCorrection.TintColor
+    V.Temp.CC.Enabled = true
+    V.Temp.CC.Brightness = Config.ColorCorrection.Brightness
+    V.Temp.CC.Contrast = Config.ColorCorrection.Contrast
+    V.Temp.CC.Saturation = Config.ColorCorrection.Saturation
+    V.Temp.CC.TintColor = Config.ColorCorrection.TintColor
 end
 
 local function SetupColorCorrectionUI()
     ApplyColorCorrection()
-    local CCBox = V.Tabs.Visuals:AddRightGroupbox('Color Correction')
-    local CCToggle = CCBox:AddToggle('CCEnabled', {
+    V.Temp.CCBox = V.Tabs.Visuals:AddRightGroupbox('Color Correction')
+    V.Temp.CCToggle = V.Temp.CCBox:AddToggle('CCEnabled', {
     Text = 'Enabled',
     Default = Config.ColorCorrection.Enabled,
     Callback = function(v)
@@ -6703,7 +6703,7 @@ local function SetupColorCorrectionUI()
     end
 })
 
-CCBox:AddSlider('CCBrightness', {
+V.Temp.CCBox:AddSlider('CCBrightness', {
     Text = 'Brightness',
     Default = Config.ColorCorrection.Brightness,
     Min = -1,
@@ -6716,7 +6716,7 @@ CCBox:AddSlider('CCBrightness', {
     end
 })
 
-CCBox:AddSlider('CCContrast', {
+V.Temp.CCBox:AddSlider('CCContrast', {
     Text = 'Contrast',
     Default = Config.ColorCorrection.Contrast,
     Min = -1,
@@ -6729,7 +6729,7 @@ CCBox:AddSlider('CCContrast', {
     end
 })
 
-CCBox:AddSlider('CCSaturation', {
+V.Temp.CCBox:AddSlider('CCSaturation', {
     Text = 'Saturation',
     Default = Config.ColorCorrection.Saturation,
     Min = -1,
@@ -6742,7 +6742,7 @@ CCBox:AddSlider('CCSaturation', {
     end
 })
 
-CCToggle:AddColorPicker('CCTintColor', {
+V.Temp.CCToggle:AddColorPicker('CCTintColor', {
     Title = 'Tint Color',
     Transparency = false,
     Default = Config.ColorCorrection.TintColor,
@@ -6822,8 +6822,8 @@ V.FrozenTemplate = V.FrozenTemplate or nil
 function V.GetBestAuraAttachment(char)
     if not char then return nil end
     local function getAttach(partName, attachName)
-        local part = char:FindFirstChild(partName)
-        if part then return part:FindFirstChild(attachName) end
+        V.Temp.AuraPart = char:FindFirstChild(partName)
+        if V.Temp.AuraPart then return V.Temp.AuraPart:FindFirstChild(attachName) end
         return nil
     end
     return 
@@ -6837,37 +6837,37 @@ end
 function V.ClearAura()
     -- destroy previously created emitters
     for i = 1, #V.AuraEmitters do
-        local e = V.AuraEmitters[i]
-        if e and e.Destroy then pcall(function() e:Destroy() end) end
+        V.Temp.AuraEmitter = V.AuraEmitters[i]
+        if V.Temp.AuraEmitter and V.Temp.AuraEmitter.Destroy then pcall(function() V.Temp.AuraEmitter:Destroy() end) end
     end
     V.AuraEmitters = {}
 end
 
 function V.GetAuraColorSequence()
-    local c = Config.Aura.Color or Color3.new(1,1,1)
+    V.Temp.AuraColor = Config.Aura.Color or Color3.new(1,1,1)
     return ColorSequence.new({
-        ColorSequenceKeypoint.new(0, c),
-        ColorSequenceKeypoint.new(1, c),
+        ColorSequenceKeypoint.new(0, V.Temp.AuraColor),
+        ColorSequenceKeypoint.new(1, V.Temp.AuraColor),
     })
 end
 
 function V.UpdateAuraColor()
-    local seq = V.GetAuraColorSequence()
+    V.Temp.AuraSeq = V.GetAuraColorSequence()
     for i = 1, #V.AuraEmitters do
-        local e = V.AuraEmitters[i]
-        if e and e:IsA('ParticleEmitter') then
-            e.Color = seq
+        V.Temp.AuraEmitterUpdate = V.AuraEmitters[i]
+        if V.Temp.AuraEmitterUpdate and V.Temp.AuraEmitterUpdate:IsA('ParticleEmitter') then
+            V.Temp.AuraEmitterUpdate.Color = V.Temp.AuraSeq
         end
     end
 end
 
 function V.UpdateAuraLightEmission()
-    local le = Config.Aura and Config.Aura.LightEmission
-    if le == nil then return end
+    V.Temp.AuraLE = Config.Aura and Config.Aura.LightEmission
+    if V.Temp.AuraLE == nil then return end
     for i = 1, #V.AuraEmitters do
-        local e = V.AuraEmitters[i]
-        if e and e:IsA('ParticleEmitter') then
-            e.LightEmission = le
+        V.Temp.AuraEmitterLE = V.AuraEmitters[i]
+        if V.Temp.AuraEmitterLE and V.Temp.AuraEmitterLE:IsA('ParticleEmitter') then
+            V.Temp.AuraEmitterLE.LightEmission = V.Temp.AuraLE
         end
     end
 end
@@ -6877,22 +6877,22 @@ function V.CreateEmbersAura(char)
     if not char then return end
     local function makeOn(parentInst, props)
         if not parentInst then return end
-        local pe = Instance.new('ParticleEmitter')
-        for k, v in pairs(props) do pe[k] = v end
-        pe.Parent = parentInst
-        table.insert(V.AuraEmitters, pe)
+        V.Temp.AuraPE = Instance.new('ParticleEmitter')
+        for k, v in pairs(props) do V.Temp.AuraPE[k] = v end
+        V.Temp.AuraPE.Parent = parentInst
+        table.insert(V.AuraEmitters, V.Temp.AuraPE)
     end
     local function getAttachOrPart(partName, attachName)
-        local part = char:FindFirstChild(partName)
-        if not part then return nil end
-        local att = attachName and part:FindFirstChild(attachName)
-        return att or part
+        V.Temp.AuraPartCheck = char:FindFirstChild(partName)
+        if not V.Temp.AuraPartCheck then return nil end
+        V.Temp.AuraAtt = attachName and V.Temp.AuraPartCheck:FindFirstChild(attachName)
+        return V.Temp.AuraAtt or V.Temp.AuraPartCheck
     end
 
-    local col = V.GetAuraColorSequence()
+    V.Temp.AuraCol = V.GetAuraColorSequence()
 
     -- Common emitter definitions
-    local Embers1 = {
+    V.Temp.Embers1 = {
         Drag = 5,
         ZOffset = 4,
         Texture = 'rbxassetid://1084996976',
@@ -6909,11 +6909,11 @@ function V.CreateEmbersAura(char)
             NumberSequenceKeypoint.new(1,0,0)
         })
     }
-    local Aura1 = {
+    V.Temp.Aura1 = {
         VelocitySpread = 5,
         RotSpeed = NumberRange.new(-30,30),
         Texture = 'rbxassetid://13410359900',
-        Color = col,
+        Color = V.Temp.AuraCol,
         Drag = 5,
         ZOffset = -1.05,
         LightEmission = 0.6,
@@ -6935,11 +6935,11 @@ function V.CreateEmbersAura(char)
             NumberSequenceKeypoint.new(1,0.9,0)
         })
     }
-    local Aura2 = {
+    V.Temp.Aura2 = {
         VelocitySpread = 5,
         RotSpeed = NumberRange.new(-30,30),
         Texture = 'rbxassetid://13410359900',
-        Color = col,
+        Color = V.Temp.AuraCol,
         LightEmission = 1,
         Drag = 5,
         ZOffset = -1,
@@ -6963,40 +6963,40 @@ function V.CreateEmbersAura(char)
     }
 
     -- Head
-    local headParent = getAttachOrPart('Head', 'FaceCenterAttachment')
-    makeOn(headParent, Embers1)
-    makeOn(headParent, Aura1)
-    makeOn(headParent, Aura2)
+    V.Temp.HeadParent = getAttachOrPart('Head', 'FaceCenterAttachment')
+    makeOn(V.Temp.HeadParent, V.Temp.Embers1)
+    makeOn(V.Temp.HeadParent, V.Temp.Aura1)
+    makeOn(V.Temp.HeadParent, V.Temp.Aura2)
 
     -- Left Arm
-    local lArmParent = getAttachOrPart('LeftUpperArm', 'LeftShoulderRigAttachment') or getAttachOrPart('Left Arm', 'LeftShoulderAttachment')
-    makeOn(lArmParent, Embers1)
-    makeOn(lArmParent, Aura1)
-    makeOn(lArmParent, Aura2)
+    V.Temp.LArmParent = getAttachOrPart('LeftUpperArm', 'LeftShoulderRigAttachment') or getAttachOrPart('Left Arm', 'LeftShoulderAttachment')
+    makeOn(V.Temp.LArmParent, V.Temp.Embers1)
+    makeOn(V.Temp.LArmParent, V.Temp.Aura1)
+    makeOn(V.Temp.LArmParent, V.Temp.Aura2)
 
     -- Right Arm
-    local rArmParent = getAttachOrPart('RightUpperArm', 'RightShoulderRigAttachment') or getAttachOrPart('Right Arm', 'RightShoulderAttachment')
-    makeOn(rArmParent, Embers1)
-    makeOn(rArmParent, Aura1)
-    makeOn(rArmParent, Aura2)
+    V.Temp.RArmParent = getAttachOrPart('RightUpperArm', 'RightShoulderRigAttachment') or getAttachOrPart('Right Arm', 'RightShoulderAttachment')
+    makeOn(V.Temp.RArmParent, V.Temp.Embers1)
+    makeOn(V.Temp.RArmParent, V.Temp.Aura1)
+    makeOn(V.Temp.RArmParent, V.Temp.Aura2)
 
     -- Left Leg
-    local lLegParent = getAttachOrPart('LeftFoot', 'LeftFootAttachment') or getAttachOrPart('Left Leg', 'LeftFootAttachment')
-    makeOn(lLegParent, Embers1)
-    makeOn(lLegParent, Aura1)
-    makeOn(lLegParent, Aura2)
+    V.Temp.LLegParent = getAttachOrPart('LeftFoot', 'LeftFootAttachment') or getAttachOrPart('Left Leg', 'LeftFootAttachment')
+    makeOn(V.Temp.LLegParent, V.Temp.Embers1)
+    makeOn(V.Temp.LLegParent, V.Temp.Aura1)
+    makeOn(V.Temp.LLegParent, V.Temp.Aura2)
 
     -- Right Leg
-    local rLegParent = getAttachOrPart('RightFoot', 'RightFootAttachment') or getAttachOrPart('Right Leg', 'RightFootAttachment')
-    makeOn(rLegParent, Embers1)
-    makeOn(rLegParent, Aura1)
-    makeOn(rLegParent, Aura2)
+    V.Temp.RLegParent = getAttachOrPart('RightFoot', 'RightFootAttachment') or getAttachOrPart('Right Leg', 'RightFootAttachment')
+    makeOn(V.Temp.RLegParent, V.Temp.Embers1)
+    makeOn(V.Temp.RLegParent, V.Temp.Aura1)
+    makeOn(V.Temp.RLegParent, V.Temp.Aura2)
 
     -- Torso/Core
-    local torsoParent = getAttachOrPart('UpperTorso', 'WaistCenterAttachment') or getAttachOrPart('Torso', 'WaistCenterAttachment')
-    makeOn(torsoParent, Embers1)
-    makeOn(torsoParent, Aura1)
-    makeOn(torsoParent, Aura2)
+    V.Temp.TorsoParent = getAttachOrPart('UpperTorso', 'WaistCenterAttachment') or getAttachOrPart('Torso', 'WaistCenterAttachment')
+    makeOn(V.Temp.TorsoParent, V.Temp.Embers1)
+    makeOn(V.Temp.TorsoParent, V.Temp.Aura1)
+    makeOn(V.Temp.TorsoParent, V.Temp.Aura2)
 end
 
 -- New: Charging aura built from provided model data (used as a template)
@@ -7069,19 +7069,19 @@ end
 
 function V.CreateChargingAura(attach)
     if not attach then return end
-    local template = V._GetChargingTemplate()
-    if not template then return end
-    local torso = template:FindFirstChild("Torso")
-    if not torso then return end
-    local main = torso:FindFirstChild("Main")
-    if not main or not main:IsA('Attachment') then return end
+    V.Temp.ChargingTemplate = V._GetChargingTemplate()
+    if not V.Temp.ChargingTemplate then return end
+    V.Temp.ChargingTorso = V.Temp.ChargingTemplate:FindFirstChild("Torso")
+    if not V.Temp.ChargingTorso then return end
+    V.Temp.ChargingMain = V.Temp.ChargingTorso:FindFirstChild("Main")
+    if not V.Temp.ChargingMain or not V.Temp.ChargingMain:IsA('Attachment') then return end
 
-    for _, child in ipairs(main:GetChildren()) do
+    for _, child in ipairs(V.Temp.ChargingMain:GetChildren()) do
         if child:IsA('ParticleEmitter') then
-            local pe = child:Clone()
-            pe.Color = V.GetAuraColorSequence()
-            pe.Parent = attach
-            table.insert(V.AuraEmitters, pe)
+            V.Temp.ChargingPE = child:Clone()
+            V.Temp.ChargingPE.Color = V.GetAuraColorSequence()
+            V.Temp.ChargingPE.Parent = attach
+            table.insert(V.AuraEmitters, V.Temp.ChargingPE)
         end
     end
 end
@@ -7090,11 +7090,11 @@ function V.CreateHealthAura(attach)
     if not attach then return end
     -- Helper to make emitter
     local function makeEmitter(props)
-        local pe = Instance.new('ParticleEmitter')
-        for k, val in pairs(props) do pe[k] = val end
-        pe.Parent = attach
-        table.insert(V.AuraEmitters, pe)
-        return pe
+        V.Temp.HealthPE = Instance.new('ParticleEmitter')
+        for k, val in pairs(props) do V.Temp.HealthPE[k] = val end
+        V.Temp.HealthPE.Parent = attach
+        table.insert(V.AuraEmitters, V.Temp.HealthPE)
+        return V.Temp.HealthPE
     end
     -- Cubes
     makeEmitter({
@@ -7216,15 +7216,15 @@ end
 
 function V.BuildAuraForCharacter(char)
     V.ClearAura()
-    local attach = V.GetBestAuraAttachment(char)
+    V.Temp.BuildAttach = V.GetBestAuraAttachment(char)
     if Config.Aura.Type == 'Health' then
-        if not attach then return end
-        V.CreateHealthAura(attach)
+        if not V.Temp.BuildAttach then return end
+        V.CreateHealthAura(V.Temp.BuildAttach)
     elseif Config.Aura.Type == 'Embers' then
         V.CreateEmbersAura(char)
     elseif Config.Aura.Type == 'Charging' then
-        if not attach then return end
-        V.CreateChargingAura(attach)
+        if not V.Temp.BuildAttach then return end
+        V.CreateChargingAura(V.Temp.BuildAttach)
     elseif Config.Aura.Type == 'Frozen' then
         V.CreateFrozenAura(char)
     end
@@ -7237,8 +7237,8 @@ function V.ApplyAura()
         V.ClearAura()
         return
     end
-    local char = V.LP and V.LP.Character
-    if char then V.BuildAuraForCharacter(char) end
+    V.Temp.ApplyChar = V.LP and V.LP.Character
+    if V.Temp.ApplyChar then V.BuildAuraForCharacter(V.Temp.ApplyChar) end
 end
 
 function V.SetupAuraUI()
@@ -7254,8 +7254,8 @@ function V.SetupAuraUI()
         end)
     end
 
-    local AuraBox = V.Tabs.Visuals:AddRightGroupbox('Aura')
-    local AuraToggle = AuraBox:AddToggle('AuraEnabled', {
+    V.Temp.AuraBox = V.Tabs.Visuals:AddRightGroupbox('Aura')
+    V.Temp.AuraToggle = V.Temp.AuraBox:AddToggle('AuraEnabled', {
         Text = 'Enabled',
         Default = Config.Aura.Enabled,
         Callback = function(v)
@@ -7264,7 +7264,7 @@ function V.SetupAuraUI()
         end
     })
 
-    AuraToggle:AddColorPicker('AuraColor', {
+    V.Temp.AuraToggle:AddColorPicker('AuraColor', {
         Default = Config.Aura.Color,
         Title = 'Color',
         Transparency = false,
@@ -7278,7 +7278,7 @@ function V.SetupAuraUI()
     if Config.Aura.LightEmission == nil then
         Config.Aura.LightEmission = 0.6
     end
-    AuraBox:AddSlider('AuraLightEmission', {
+    V.Temp.AuraBox:AddSlider('AuraLightEmission', {
         Text = 'Light Emission',
         Default = Config.Aura.LightEmission,
         Min = 0,
@@ -7291,7 +7291,7 @@ function V.SetupAuraUI()
         end
     })
 
-    AuraBox:AddDropdown('AuraType', {
+    V.Temp.AuraBox:AddDropdown('AuraType', {
         Values = {'Health','Embers','Charging','Frozen'},
         Default = Config.Aura.Type,
         Multi = false,
@@ -7357,11 +7357,11 @@ local function ShowTargetHitbox()
         return
     end
     
-    local hitbox = V.Target.player.Character:FindFirstChild('Hitbox')
-    if not hitbox then return end
+    V.Temp.Hitbox = V.Target.player.Character:FindFirstChild('Hitbox')
+    if not V.Temp.Hitbox then return end
     
     -- If new hitbox, save original properties
-    if V.CurrentHitbox ~= hitbox then
+    if V.CurrentHitbox ~= V.Temp.Hitbox then
         -- Restore previous hitbox if exists
         if V.CurrentHitbox then
             V.CurrentHitbox.Transparency = V.OriginalHitboxTransparency or 1
@@ -7369,9 +7369,9 @@ local function ShowTargetHitbox()
         end
         
         -- Set new hitbox
-        V.CurrentHitbox = hitbox
-        V.OriginalHitboxTransparency = hitbox.Transparency
-        V.OriginalHitboxMaterial = hitbox.Material
+        V.CurrentHitbox = V.Temp.Hitbox
+        V.OriginalHitboxTransparency = V.Temp.Hitbox.Transparency
+        V.OriginalHitboxMaterial = V.Temp.Hitbox.Material
     end
     
     -- Apply hitbox visualization
@@ -7675,14 +7675,14 @@ function V.Gravity.Enable()
     else
         V.Gravity.Connection = V.RS.PreSimulation:Connect(function(dt)
             if V.LP.Character and V.LP.Character:FindFirstChild('Humanoid') and V.LP.Character:FindFirstChild('HumanoidRootPart') then
-                local humanoid = V.LP.Character.Humanoid
-                local root = V.LP.Character.HumanoidRootPart
+                V.CharCache.TempHum = V.LP.Character.Humanoid
+                V.CharCache.TempRoot = V.LP.Character.HumanoidRootPart
                 
-                if humanoid.FloorMaterial == Enum.Material.Air then
+                if V.CharCache.TempHum.FloorMaterial == Enum.Material.Air then
                     if Config.Gravity.Mode == 'Impulse' then
-                        root:ApplyImpulse(V.V3(0, dt * (V.WS.Gravity - Config.Gravity.Value), 0) * root.AssemblyMass)
+                        V.CharCache.TempRoot:ApplyImpulse(V.V3(0, dt * (V.WS.Gravity - Config.Gravity.Value), 0) * V.CharCache.TempRoot.AssemblyMass)
                     else -- LinearVelocity
-                        root.AssemblyLinearVelocity = root.AssemblyLinearVelocity + V.V3(0, dt * (V.WS.Gravity - Config.Gravity.Value), 0)
+                        V.CharCache.TempRoot.AssemblyLinearVelocity = V.CharCache.TempRoot.AssemblyLinearVelocity + V.V3(0, dt * (V.WS.Gravity - Config.Gravity.Value), 0)
                     end
                 end
             end
@@ -7778,22 +7778,22 @@ function V.Strafe.Enable()
     V.Strafe.Connection = V.RS.PreSimulation:Connect(function(dt)
         if not (Config.Strafe and Config.Strafe.Enabled) then return end
 
-        local char = V.LP.Character; if not char then return end
-        local hum = char:FindFirstChildOfClass('Humanoid'); if not hum then return end
-        local hrp = char:FindFirstChild('HumanoidRootPart'); if not hrp then return end
+        V.CharCache.TempChar = V.LP.Character; if not V.CharCache.TempChar then return end
+        V.CharCache.TempHum = V.CharCache.TempChar:FindFirstChildOfClass('Humanoid'); if not V.CharCache.TempHum then return end
+        V.CharCache.TempRoot = V.CharCache.TempChar:FindFirstChild('HumanoidRootPart'); if not V.CharCache.TempRoot then return end
 
         -- В воздухе ускоряемся по MoveDirection сдвигом CFrame
-        local fm = hum.FloorMaterial
-        if fm ~= Enum.Material.Air then return end
+        V.Temp.FloorMaterial = V.CharCache.TempHum.FloorMaterial
+        if V.Temp.FloorMaterial ~= Enum.Material.Air then return end
 
-        local dir = hum.MoveDirection
-        if dir.Magnitude <= 0 then return end
+        V.Temp.MoveDirection = V.CharCache.TempHum.MoveDirection
+        if V.Temp.MoveDirection.Magnitude <= 0 then return end
 
-        local strength = V.math.clamp(tonumber(Config.Strafe.Strength) or 2, 0.1, 10)
-        local horiz = V.V3(dir.X, 0, dir.Z)
-        if horiz.Magnitude > 0 then
-            local offset = horiz.Unit * strength * (dt * 10)
-            hrp.CFrame = hrp.CFrame + offset
+        V.Temp.Strength = V.math.clamp(tonumber(Config.Strafe.Strength) or 2, 0.1, 10)
+        V.Temp.HorizVector = V.V3(V.Temp.MoveDirection.X, 0, V.Temp.MoveDirection.Z)
+        if V.Temp.HorizVector.Magnitude > 0 then
+            V.Temp.Offset = V.Temp.HorizVector.Unit * V.Temp.Strength * (dt * 10)
+            V.CharCache.TempRoot.CFrame = V.CharCache.TempRoot.CFrame + V.Temp.Offset
         end
     end)
 end
@@ -7814,9 +7814,9 @@ function V.Strafe.Toggle(enabled)
 end
 
 function V.Strafe.SetStrength(val)
-    local num = tonumber(val)
-    if num then
-        Config.Strafe.Strength = V.math.clamp(num, 0.1, 10)
+    V.Temp.TempNumber = tonumber(val)
+    if V.Temp.TempNumber then
+        Config.Strafe.Strength = V.math.clamp(V.Temp.TempNumber, 0.1, 10)
     end
 end
 
