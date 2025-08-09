@@ -193,6 +193,17 @@ local V = {
     TrailAttach0 = nil,
     TrailAttach1 = nil,
     _TrailCharConn = nil,
+
+    -- NoJumpCD
+    NoJumpCD = { Enabled = false },
+    NoJumpCDOldNewIndex = nil,
+    GameIsA = game.IsA,
+    -- PingSpoofer cache
+    PingSpoofer = { Label = nil, Conn = nil, WaitConn = nil },
+    -- MemorySpoofer cache
+    MemorySpoofer = { Label = nil, Conn = nil, WaitConn = nil },
+    -- Custom Animation cache
+    CustomAnim = { Track = nil, Coroutine = nil, DeathConn = nil, CharConn = nil, Humanoid = nil, StopConn = nil, Animate = nil },
     
     -- Crosshair cache (группируем в одну таблицу)
     Crosshair = {
@@ -209,6 +220,13 @@ local V = {
         TempDirection = nil,
         TempAngle = 0,
         TempRadius = 0
+    },
+    
+    -- YawManager cache
+    YawManager = {
+        Connection = nil,
+        JitterState = 1,
+        JitterTimer = 0
     },
     
     -- UI Elements cache (кешируем UI элементы)
@@ -511,6 +529,14 @@ local Config = {
         Enabled = false,
         Color = Color3.new(0, 150/255, 1) -- default cyan-ish
     },
+    NoJumpCD = {
+        Enabled = false
+    },
+    PingSpoofer = {
+        Enabled = false,
+        Start = 50,
+        End = 150
+    },
     SelfMaterial = {
         Enabled = false,
         Color = Color3.new(0, 150/255, 1) -- default cyan-ish
@@ -723,12 +749,158 @@ local Config = {
     GamingChair = {
         Enabled = false,
         Color = Color3.fromRGB(255, 0, 0)
+    },
+
+    -- YawManager Settings
+    YawManager = {
+        Enabled = false,
+        Mode = 'Static',
+        Modes = {'Static', 'Jitter', '3 Ways', '5 Ways', 'Spin'},
+        Angle = 90,
+        AtTarget = false,
+        DisableAutoRotate = false
     }
  }
 
 -----------------------
 -- UTILITY FUNCTIONS
 -----------------------
+
+-----------------------
+-- YAWMANAGER MODULE
+-----------------------
+
+-- Получение углов для разных режимов
+local function getYawAngles()
+    V.Temp.TempNumber = Config.YawManager.Angle
+    if Config.YawManager.Mode == 'Static' then
+        return {V.Temp.TempNumber}
+    elseif Config.YawManager.Mode == 'Jitter' then
+        return {V.Temp.TempNumber, -V.Temp.TempNumber}
+    elseif Config.YawManager.Mode == '3 Ways' then
+        return {-V.Temp.TempNumber, 0, V.Temp.TempNumber}
+    elseif Config.YawManager.Mode == '5 Ways' then
+        return {-V.Temp.TempNumber, -V.Temp.TempNumber/2, 0, V.Temp.TempNumber/2, V.Temp.TempNumber}
+    elseif Config.YawManager.Mode == 'Spin' then
+        return {V.Temp.TempNumber}
+    end
+    return {V.Temp.TempNumber}
+end
+
+-- Применение AutoRotate настройки
+local function applyYawManagerAutoRotate()
+    V.CharCache.TempChar = V.LP.Character
+    if V.CharCache.TempChar then
+        V.CharCache.TempHum = V.CharCache.TempChar:FindFirstChildOfClass('Humanoid')
+        if V.CharCache.TempHum then
+            V.CharCache.TempHum.AutoRotate = not Config.YawManager.DisableAutoRotate
+        end
+    end
+end
+
+-- Основная функция управления YawManager
+local function setYawManager(state)
+    Config.YawManager.Enabled = state
+    if V.YawManager.Connection then
+        V.YawManager.Connection:Disconnect()
+        V.YawManager.Connection = nil
+    end
+    V.YawManager.JitterState = 1
+    V.YawManager.JitterTimer = 0
+    applyYawManagerAutoRotate()
+    
+    if state then
+        V.YawManager.Connection = V.RS.RenderStepped:Connect(function(dt)
+            V.CharCache.TempChar = V.LP.Character
+            if not V.CharCache.TempChar then return end
+            V.CharCache.TempRoot = V.CharCache.TempChar:FindFirstChild('HumanoidRootPart')
+            if not V.CharCache.TempRoot then return end
+            
+            V.Temp.MyPos = V.CharCache.TempRoot.Position
+            V.Temp.LookVector = nil
+            
+            if Config.YawManager.AtTarget then
+                V.Temp.Target = V.Target and V.Target.player
+                if V.Temp.Target and V.Temp.Target.Character and V.Temp.Target.Character:FindFirstChild("HumanoidRootPart") then
+                    V.Temp.TargetHrp = V.Temp.Target.Character.HumanoidRootPart
+                    V.Temp.DirectionToTarget = (V.Temp.TargetHrp.Position - V.Temp.MyPos)
+                    V.Temp.BaseYaw = V.math.atan2(V.Temp.DirectionToTarget.X, V.Temp.DirectionToTarget.Z)
+                    
+                    V.Temp.Angles = getYawAngles()
+                    V.Temp.FinalYaw = nil
+                    
+                    if Config.YawManager.Mode == 'Jitter' then
+                        V.YawManager.JitterTimer = V.YawManager.JitterTimer + dt
+                        if V.YawManager.JitterTimer > 0.1 then
+                            V.YawManager.JitterState = 3 - V.YawManager.JitterState -- 1 <-> 2
+                            V.YawManager.JitterTimer = 0
+                        end
+                        V.Temp.FinalYaw = V.Temp.BaseYaw + V.math.rad(V.Temp.Angles[V.YawManager.JitterState])
+                    elseif Config.YawManager.Mode == '3 Ways' then
+                        V.YawManager.JitterTimer = V.YawManager.JitterTimer + dt
+                        if V.YawManager.JitterTimer > 0.15 then
+                            V.YawManager.JitterState = V.YawManager.JitterState % 3 + 1
+                            V.YawManager.JitterTimer = 0
+                        end
+                        V.Temp.FinalYaw = V.Temp.BaseYaw + V.math.rad(V.Temp.Angles[V.YawManager.JitterState])
+                    elseif Config.YawManager.Mode == '5 Ways' then
+                        V.YawManager.JitterTimer = V.YawManager.JitterTimer + dt
+                        if V.YawManager.JitterTimer > 0.12 then
+                            V.YawManager.JitterState = V.YawManager.JitterState % 5 + 1
+                            V.YawManager.JitterTimer = 0
+                        end
+                        V.Temp.FinalYaw = V.Temp.BaseYaw + V.math.rad(V.Temp.Angles[V.YawManager.JitterState])
+                    elseif Config.YawManager.Mode == 'Spin' then
+                        V.YawManager.JitterTimer = V.YawManager.JitterTimer + dt * 5 -- скорость вращения
+                        V.Temp.FinalYaw = V.Temp.BaseYaw + V.YawManager.JitterTimer
+                    else -- Static
+                        V.Temp.FinalYaw = V.Temp.BaseYaw + V.math.rad(V.Temp.Angles[1])
+                    end
+                    
+                    V.Temp.LookVector = V.V3(V.math.sin(V.Temp.FinalYaw), 0, V.math.cos(V.Temp.FinalYaw))
+                end
+            else -- Режим не AtTarget
+                V.Temp.Angles = getYawAngles()
+                V.Temp.Yaw = nil
+                
+                if Config.YawManager.Mode == 'Static' then
+                    V.Temp.Yaw = V.math.rad(V.Temp.Angles[1])
+                elseif Config.YawManager.Mode == 'Jitter' then
+                    V.YawManager.JitterTimer = V.YawManager.JitterTimer + dt
+                    if V.YawManager.JitterTimer > 0.1 then
+                        V.YawManager.JitterState = 3 - V.YawManager.JitterState -- 1 <-> 2
+                        V.YawManager.JitterTimer = 0
+                    end
+                    V.Temp.Yaw = V.math.rad(V.Temp.Angles[V.YawManager.JitterState])
+                elseif Config.YawManager.Mode == '3 Ways' then
+                    V.YawManager.JitterTimer = V.YawManager.JitterTimer + dt
+                    if V.YawManager.JitterTimer > 0.15 then
+                        V.YawManager.JitterState = V.YawManager.JitterState % 3 + 1
+                        V.YawManager.JitterTimer = 0
+                    end
+                    V.Temp.Yaw = V.math.rad(V.Temp.Angles[V.YawManager.JitterState])
+                elseif Config.YawManager.Mode == '5 Ways' then
+                    V.YawManager.JitterTimer = V.YawManager.JitterTimer + dt
+                    if V.YawManager.JitterTimer > 0.12 then
+                        V.YawManager.JitterState = V.YawManager.JitterState % 5 + 1
+                        V.YawManager.JitterTimer = 0
+                    end
+                    V.Temp.Yaw = V.math.rad(V.Temp.Angles[V.YawManager.JitterState])
+                elseif Config.YawManager.Mode == 'Spin' then
+                    V.YawManager.JitterTimer = V.YawManager.JitterTimer + dt * 5 -- скорость вращения
+                    V.Temp.Yaw = V.YawManager.JitterTimer
+                else
+                    V.Temp.Yaw = V.math.rad(Config.YawManager.Angle)
+                end
+                V.Temp.LookVector = V.V3(V.math.sin(V.Temp.Yaw), 0, V.math.cos(V.Temp.Yaw))
+            end
+
+            if V.Temp.LookVector then
+                V.CharCache.TempRoot.CFrame = V.CF(V.Temp.MyPos, V.Temp.MyPos + V.Temp.LookVector)
+            end
+        end)
+    end
+end
 
 -----------------------
 -- GAMINGCHAIR MODULE
@@ -3933,6 +4105,533 @@ __csync = hookmetamethod(game, "__index", function(t,k)
         end
     end
     return __csync(t,k)
+end)
+
+-----------------------
+-- PLAYER: NO JUMP CD
+-----------------------
+-- UI
+V.NoJumpBox = V.Tabs.Player:AddLeftGroupbox('NoJumpCD')
+V.NoJumpBox:AddToggle('NoJumpCDEnabled', {
+    Text = 'NoJumpCD',
+    Default = Config.NoJumpCD.Enabled,
+    Tooltip = 'Блокирует попытки задать JumpPower (снимает КД прыжка)',
+    Callback = function(v)
+        Config.NoJumpCD.Enabled = v
+    end
+})
+
+-- Ensure game is loaded before hook
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+-- Hook __newindex once, gate by Config
+if not V.NoJumpCDOldNewIndex then
+    local __nojump
+    __nojump = hookmetamethod(game, "__newindex", function(self, Index, Value)
+        if not checkcaller() and V.GameIsA(self, "Humanoid") and Index == "JumpPower" and Config.NoJumpCD and Config.NoJumpCD.Enabled then
+            return
+        end
+        return __nojump(self, Index, Value)
+    end)
+    V.NoJumpCDOldNewIndex = __nojump
+end
+
+-----------------------
+-- PLAYER: PING SPOOFER
+-----------------------
+-- UI
+V.PingBox = V.Tabs.Player:AddRightGroupbox('PingSpoofer')
+
+V.PingBox:AddToggle('PingSpooferEnabled', {
+    Text = 'PingSpoofer',
+    Default = Config.PingSpoofer.Enabled,
+    Tooltip = 'Подменяет текст пинга на выбранный диапазон',
+    Callback = function(v)
+        Config.PingSpoofer.Enabled = v
+        if not getgenv().PingSpoofer then getgenv().PingSpoofer = {} end
+        getgenv().PingSpoofer.SpoofPing = v
+        getgenv().PingSpoofer.StartOfPingSpoofer = Config.PingSpoofer.Start
+        getgenv().PingSpoofer.EndOfPingSpoofer = Config.PingSpoofer.End
+        if v then
+            -- locate PerformanceStats Ping value label, like reference snippet
+            V.PingSpoofer.Label = nil
+            V.Temp.TempInstance = game:GetService('CoreGui')
+            if V.Temp.TempInstance then
+                V.Temp.TempInstance = V.Temp.TempInstance:FindFirstChild('RobloxGui')
+                if V.Temp.TempInstance then
+                    V.Temp.TempInstance = V.Temp.TempInstance:FindFirstChild('PerformanceStats')
+                    if V.Temp.TempInstance then
+                        for _, d in ipairs(V.Temp.TempInstance:GetChildren()) do
+                            if d.Name == 'PS_Button' and d:FindFirstChild('StatsMiniTextPanelClass') then
+                                V.Temp.TempPanel = d.StatsMiniTextPanelClass
+                                if V.Temp.TempPanel:FindFirstChild('TitleLabel') and V.Temp.TempPanel.TitleLabel.Text == 'Ping' then
+                                    if V.Temp.TempPanel:FindFirstChild('ValueLabel') then
+                                        V.PingSpoofer.Label = V.Temp.TempPanel.ValueLabel
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                        if not V.PingSpoofer.Label and not V.PingSpoofer.WaitConn then
+                            V.PingSpoofer.WaitConn = V.Temp.TempInstance.DescendantAdded:Connect(function(nd)
+                                if not V.PingSpoofer.Label and nd.Name == 'PS_Button' and nd:FindFirstChild('StatsMiniTextPanelClass') then
+                                    V.Temp.TempPanel = nd.StatsMiniTextPanelClass
+                                    if V.Temp.TempPanel and V.Temp.TempPanel:FindFirstChild('TitleLabel') and V.Temp.TempPanel.TitleLabel.Text == 'Ping' then
+                                        if V.Temp.TempPanel:FindFirstChild('ValueLabel') then
+                                            V.PingSpoofer.Label = V.Temp.TempPanel.ValueLabel
+                                            if V.PingSpoofer.WaitConn then V.PingSpoofer.WaitConn:Disconnect(); V.PingSpoofer.WaitConn=nil end
+                                        end
+                                    end
+                                end
+                            end)
+                        end
+                    end
+                end
+            end
+
+            if V.PingSpoofer.Label then
+                if V.PingSpoofer.Conn then V.PingSpoofer.Conn:Disconnect(); V.PingSpoofer.Conn=nil end
+                V.PingSpoofer.Conn = V.PingSpoofer.Label:GetPropertyChangedSignal('Text'):Connect(function()
+                    if Config.PingSpoofer.Enabled and getgenv().PingSpoofer and getgenv().PingSpoofer.SpoofPing then
+                        V.Temp.TempNumber = V.math.random(getgenv().PingSpoofer.StartOfPingSpoofer or Config.PingSpoofer.Start, getgenv().PingSpoofer.EndOfPingSpoofer or Config.PingSpoofer.End)
+                        V.Temp.TempNumber = V.Temp.TempNumber * 1.23
+                        V.PingSpoofer.Label.Text = V.Temp.TempNumber .. ' ms'
+                    end
+                end)
+            end
+        else
+            if V.PingSpoofer.Conn then V.PingSpoofer.Conn:Disconnect(); V.PingSpoofer.Conn=nil end
+            if V.PingSpoofer.WaitConn then V.PingSpoofer.WaitConn:Disconnect(); V.PingSpoofer.WaitConn=nil end
+        end
+    end
+})
+
+V.PingBox:AddSlider('PingSpooferStart', {
+    Text = 'Start (ms)',
+    Default = Config.PingSpoofer.Start,
+    Min = 1,
+    Max = 1000,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(v)
+        Config.PingSpoofer.Start = v
+        if not getgenv().PingSpoofer then getgenv().PingSpoofer = {} end
+        getgenv().PingSpoofer.StartOfPingSpoofer = v
+    end
+})
+
+V.PingBox:AddSlider('PingSpooferEnd', {
+    Text = 'End (ms)',
+    Default = Config.PingSpoofer.End,
+    Min = 1,
+    Max = 1000,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(v)
+        Config.PingSpoofer.End = v
+        if not getgenv().PingSpoofer then getgenv().PingSpoofer = {} end
+        getgenv().PingSpoofer.EndOfPingSpoofer = v
+    end
+})
+
+-----------------------
+-- PLAYER: MEMORY SPOOFER
+-----------------------
+-- ensure defaults
+if not Config.MemorySpoofer then
+    Config.MemorySpoofer = { Enabled = false, Start = 800, End = 1200 }
+end
+
+-- UI
+V.MemBox = V.Tabs.Player:AddRightGroupbox('MemorySpoofer')
+
+V.MemBox:AddToggle('MemorySpooferEnabled', {
+    Text = 'MemorySpoofer',
+    Default = Config.MemorySpoofer.Enabled,
+    Tooltip = 'Подменяет текст Memory в PerformanceStats',
+    Callback = function(v)
+        Config.MemorySpoofer.Enabled = v
+        if not getgenv().MemorySpoofer then getgenv().MemorySpoofer = {} end
+        getgenv().MemorySpoofer.SpoofMem = v
+        getgenv().MemorySpoofer.StartOfMemorySpoofer = Config.MemorySpoofer.Start
+        getgenv().MemorySpoofer.EndOfMemorySpoofer = Config.MemorySpoofer.End
+
+        if v then
+            -- locate PerformanceStats Memory value label
+            V.MemorySpoofer.Label = nil
+            V.Temp.TempInstance = game:GetService('CoreGui')
+            if V.Temp.TempInstance then
+                V.Temp.TempInstance = V.Temp.TempInstance:FindFirstChild('RobloxGui')
+                if V.Temp.TempInstance then
+                    V.Temp.TempInstance = V.Temp.TempInstance:FindFirstChild('PerformanceStats')
+                    if V.Temp.TempInstance then
+                        for _, d in ipairs(V.Temp.TempInstance:GetChildren()) do
+                            if d.Name == 'PS_Button' and d:FindFirstChild('StatsMiniTextPanelClass') then
+                                V.Temp.TempPanel = d.StatsMiniTextPanelClass
+                                if V.Temp.TempPanel:FindFirstChild('TitleLabel') and V.Temp.TempPanel.TitleLabel.Text == 'Mem' then
+                                    if V.Temp.TempPanel:FindFirstChild('ValueLabel') then
+                                        V.MemorySpoofer.Label = V.Temp.TempPanel.ValueLabel
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                        if not V.MemorySpoofer.Label and not V.MemorySpoofer.WaitConn then
+                            V.MemorySpoofer.WaitConn = V.Temp.TempInstance.DescendantAdded:Connect(function(nd)
+                                if not V.MemorySpoofer.Label and nd.Name == 'PS_Button' and nd:FindFirstChild('StatsMiniTextPanelClass') then
+                                    V.Temp.TempPanel = nd.StatsMiniTextPanelClass
+                                    if V.Temp.TempPanel and V.Temp.TempPanel:FindFirstChild('TitleLabel') and V.Temp.TempPanel.TitleLabel.Text == 'Mem' then
+                                        if V.Temp.TempPanel:FindFirstChild('ValueLabel') then
+                                            V.MemorySpoofer.Label = V.Temp.TempPanel.ValueLabel
+                                            if V.MemorySpoofer.WaitConn then V.MemorySpoofer.WaitConn:Disconnect(); V.MemorySpoofer.WaitConn=nil end
+                                        end
+                                    end
+                                end
+                            end)
+                        end
+                    end
+                end
+            end
+
+            if V.MemorySpoofer.Label then
+                if V.MemorySpoofer.Conn then V.MemorySpoofer.Conn:Disconnect(); V.MemorySpoofer.Conn=nil end
+                V.MemorySpoofer.Conn = V.MemorySpoofer.Label:GetPropertyChangedSignal('Text'):Connect(function()
+                    if Config.MemorySpoofer.Enabled and getgenv().MemorySpoofer and getgenv().MemorySpoofer.SpoofMem then
+                        V.Temp.TempNumber = V.math.random(getgenv().MemorySpoofer.StartOfMemorySpoofer or Config.MemorySpoofer.Start, getgenv().MemorySpoofer.EndOfMemorySpoofer or Config.MemorySpoofer.End)
+                        V.Temp.TempNumber = V.Temp.TempNumber * 1.23
+                        V.MemorySpoofer.Label.Text = '' .. V.Temp.TempNumber .. ' MB'
+                    end
+                end)
+            end
+        else
+            if V.MemorySpoofer.Conn then V.MemorySpoofer.Conn:Disconnect(); V.MemorySpoofer.Conn=nil end
+            if V.MemorySpoofer.WaitConn then V.MemorySpoofer.WaitConn:Disconnect(); V.MemorySpoofer.WaitConn=nil end
+        end
+    end
+})
+
+V.MemBox:AddSlider('MemorySpooferStart', {
+    Text = 'Start (MB)',
+    Default = Config.MemorySpoofer.Start,
+    Min = 50,
+    Max = 5000,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(v)
+        Config.MemorySpoofer.Start = v
+        if not getgenv().MemorySpoofer then getgenv().MemorySpoofer = {} end
+        getgenv().MemorySpoofer.StartOfMemorySpoofer = v
+    end
+})
+
+V.MemBox:AddSlider('MemorySpooferEnd', {
+    Text = 'End (MB)',
+    Default = Config.MemorySpoofer.End,
+    Min = 50,
+    Max = 5000,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(v)
+        Config.MemorySpoofer.End = v
+        if not getgenv().MemorySpoofer then getgenv().MemorySpoofer = {} end
+        getgenv().MemorySpoofer.EndOfMemorySpoofer = v
+    end
+})
+
+-----------------------
+-- PLAYER: CUSTOM ANIMATION LIBRARY
+-----------------------
+-- Animation Library - Simple and Clean
+V.AnimationLib = {
+    CurrentTrack = nil,
+    CurrentAnimator = nil,
+    StopConnection = nil,
+    Settings = {
+        customAnimEnabled = false,
+        customAnimId = '10714340543', -- Floss
+        customAnimSpeed = 1
+    }
+}
+
+-- ensure getgenv defaults
+if not getgenv().AnimBreakerSettings then
+    getgenv().AnimBreakerSettings = V.AnimationLib.Settings
+end
+
+-- Stop current animation
+V.AnimationLib.StopAnimation = function()
+    -- disconnect stop connection
+    if V.AnimationLib.StopConnection then
+        V.AnimationLib.StopConnection:Disconnect()
+        V.AnimationLib.StopConnection = nil
+    end
+    
+    -- stop current track
+    if V.AnimationLib.CurrentTrack then
+        pcall(function() 
+            V.AnimationLib.CurrentTrack:Stop() 
+        end)
+        V.AnimationLib.CurrentTrack = nil
+    end
+end
+
+-- Start new animation
+V.AnimationLib.StartAnimation = function(animId, speed)
+    -- stop any current animation first
+    V.AnimationLib.StopAnimation()
+    
+    -- get character and humanoid
+    V.Temp.Character = V.LP.Character
+    if not V.Temp.Character then return end
+    
+    V.Temp.Humanoid = V.Temp.Character:FindFirstChildOfClass('Humanoid')
+    if not V.Temp.Humanoid then return end
+    
+    -- get or create animator
+    V.AnimationLib.CurrentAnimator = V.Temp.Humanoid:FindFirstChildOfClass('Animator')
+    if not V.AnimationLib.CurrentAnimator then
+        pcall(function()
+            V.AnimationLib.CurrentAnimator = Instance.new('Animator')
+            V.AnimationLib.CurrentAnimator.Parent = V.Temp.Humanoid
+        end)
+    end
+    if not V.AnimationLib.CurrentAnimator then return end
+    
+    -- create animation
+    V.Temp.Animation = Instance.new('Animation')
+    V.Temp.Animation.AnimationId = 'rbxassetid://' .. tostring(animId)
+    
+    -- load animation track
+    pcall(function()
+        V.AnimationLib.CurrentTrack = V.AnimationLib.CurrentAnimator:LoadAnimation(V.Temp.Animation)
+    end)
+    
+    if V.AnimationLib.CurrentTrack then
+        -- stop other tracks
+        pcall(function()
+            for _, track in ipairs(V.AnimationLib.CurrentAnimator:GetPlayingAnimationTracks()) do
+                if track ~= V.AnimationLib.CurrentTrack then 
+                    track:Stop(0) 
+                end
+            end
+        end)
+        
+        -- setup and play
+        V.AnimationLib.CurrentTrack.Looped = true
+        V.AnimationLib.CurrentTrack.Priority = Enum.AnimationPriority.Action
+        V.AnimationLib.CurrentTrack:Play()
+        
+        -- set speed
+        V.Temp.FinalSpeed = math.clamp(tonumber(speed) or 1, 0.1, 5)
+        pcall(function() 
+            V.AnimationLib.CurrentTrack:AdjustSpeed(V.Temp.FinalSpeed) 
+        end)
+        
+        -- auto-restart on stop
+        V.AnimationLib.StopConnection = V.AnimationLib.CurrentTrack.Stopped:Connect(function()
+            if V.AnimationLib.Settings.customAnimEnabled then
+                task.delay(0.1, function()
+                    if V.AnimationLib.Settings.customAnimEnabled then
+                        V.AnimationLib.StartAnimation(V.AnimationLib.Settings.customAnimId, V.AnimationLib.Settings.customAnimSpeed)
+                    end
+                end)
+            end
+        end)
+    end
+end
+
+-- Update speed of current animation
+V.AnimationLib.UpdateSpeed = function(speed)
+    if V.AnimationLib.CurrentTrack then
+        V.Temp.NewSpeed = math.clamp(tonumber(speed) or 1, 0.1, 5)
+        pcall(function() 
+            V.AnimationLib.CurrentTrack:AdjustSpeed(V.Temp.NewSpeed) 
+        end)
+    end
+end
+
+-- UI
+V.CustomAnimBox = V.Tabs.Player:AddLeftGroupbox('CustomAnimation')
+
+V.CustomAnimBox:AddToggle('CustomAnimEnabled', {
+    Text = 'Enable Custom Animation',
+    Default = V.AnimationLib.Settings.customAnimEnabled,
+    Callback = function(v)
+        V.AnimationLib.Settings.customAnimEnabled = v
+        getgenv().AnimBreakerSettings.customAnimEnabled = v
+        
+        if v then
+            -- start animation with current settings
+            V.AnimationLib.StartAnimation(V.AnimationLib.Settings.customAnimId, V.AnimationLib.Settings.customAnimSpeed)
+        else
+            -- stop animation
+            V.AnimationLib.StopAnimation()
+        end
+    end
+})
+
+V.CustomAnimBox:AddDropdown('CustomAnimSelect', {
+    Values = { 'Floss', 'TakeTheL', 'CaramelDancen', 'ModelBreak', 'Ziga' },
+    Default = 1,
+    Multi = false,
+    Text = 'Animation',
+    Callback = function(val)
+        -- map selection to asset id
+        if val == 'Floss' then
+            V.AnimationLib.Settings.customAnimId = '10714340543'
+        elseif val == 'TakeTheL' then
+            V.AnimationLib.Settings.customAnimId = '117865821073911'
+        elseif val == 'CaramelDancen' then
+            V.AnimationLib.Settings.customAnimId = '83570358825425'
+        elseif val == 'ModelBreak' then
+            V.AnimationLib.Settings.customAnimId = '109873544976020'
+        elseif val == 'Ziga' then
+            V.AnimationLib.Settings.customAnimId = '100823802222093'
+        end
+        
+        -- update getgenv for compatibility
+        getgenv().AnimBreakerSettings.customAnimId = V.AnimationLib.Settings.customAnimId
+        
+        -- if enabled, stop current and start new animation
+        if V.AnimationLib.Settings.customAnimEnabled then
+            V.AnimationLib.StartAnimation(V.AnimationLib.Settings.customAnimId, V.AnimationLib.Settings.customAnimSpeed)
+        end
+    end
+})
+
+-- Speed control: stable slider with clamped range
+V.CustomAnimBox:AddSlider('CustomAnimSpeed', {
+    Text = 'Speed (x)',
+    Min = 0.1,
+    Max = 5,
+    Rounding = 2,
+    Default = V.AnimationLib.Settings.customAnimSpeed,
+    Compact = false,
+    Callback = function(v)
+        V.Temp.SliderSpeed = math.clamp(tonumber(v) or 1, 0.1, 5)
+        V.AnimationLib.Settings.customAnimSpeed = V.Temp.SliderSpeed
+        getgenv().AnimBreakerSettings.customAnimSpeed = V.Temp.SliderSpeed
+        
+        -- update speed of current animation
+        V.AnimationLib.UpdateSpeed(V.Temp.SliderSpeed)
+    end
+})
+
+-- GLOBAL: Compatibility wrapper
+if not getgenv().playCustomAnimation then
+    getgenv().playCustomAnimation = function(character, withLags)
+        if V.AnimationLib.Settings.customAnimEnabled then
+            V.AnimationLib.StartAnimation(V.AnimationLib.Settings.customAnimId, V.AnimationLib.Settings.customAnimSpeed)
+        end
+    end
+end
+
+if getgenv().respawnConnection then
+    pcall(function() getgenv().respawnConnection:Disconnect() end)
+    getgenv().respawnConnection = nil
+end
+
+getgenv().respawnConnection = V.LP.CharacterAdded:Connect(function(character)
+    -- AnimBreaker setup if enabled
+    if getgenv().AnimBreakerSettings and getgenv().AnimBreakerSettings.enabled then
+        if V.SetupAnimBreakerCharacter then
+            pcall(function() V.SetupAnimBreakerCharacter(character) end)
+        end
+    end
+    -- CustomAnim start after small delay to allow character to load
+    if getgenv().AnimBreakerSettings and getgenv().AnimBreakerSettings.customAnimEnabled then
+        -- wait for Humanoid/Animator availability
+        local hum = character:FindFirstChildOfClass('Humanoid')
+        if not hum then
+            pcall(function() hum = character:WaitForChild('Humanoid', 5) end)
+        end
+        local anim = nil
+        if hum then
+            anim = hum:FindFirstChildOfClass('Animator')
+            local tries = 0
+            while not anim and tries < 10 do
+                task.wait(0.1)
+                anim = hum:FindFirstChildOfClass('Animator')
+                tries = tries + 1
+            end
+            if not anim then
+                -- create Animator if still missing
+                pcall(function()
+                    anim = Instance.new('Animator')
+                    anim.Parent = hum
+                end)
+            end
+        end
+        -- disable default Animate script on new character to prevent overrides
+        local animateScript = character:FindFirstChild('Animate')
+        if animateScript and not animateScript.Disabled then
+            pcall(function() animateScript.Disabled = true end)
+        end
+        task.wait(0.1)
+        getgenv().playCustomAnimation(character, getgenv().AnimBreakerSettings.enabled)
+    end
+end)
+
+-- YawManager UI (правая колонка Player вкладки)
+V.UI.Boxes.YawManagerBox = V.Tabs.Player:AddRightGroupbox('YawManager')
+
+V.UI.Boxes.YawManagerBox:AddToggle('YawManagerEnabled', {
+    Text = 'YawLock',
+    Default = Config.YawManager.Enabled,
+    Callback = function(v)
+        setYawManager(v)
+    end,
+    Tooltip = 'Управление поворотом персонажа'
+})
+
+V.UI.Boxes.YawManagerBox:AddDropdown('YawManagerMode', {
+    Text = 'Mode',
+    Values = Config.YawManager.Modes,
+    Default = Config.YawManager.Mode,
+    Callback = function(val)
+        Config.YawManager.Mode = val
+        V.YawManager.JitterState = 1
+        V.YawManager.JitterTimer = 0
+    end,
+    Tooltip = 'Режим работы YawManager'
+})
+
+V.UI.Boxes.YawManagerBox:AddSlider('YawManagerAngle', {
+    Text = 'Angle',
+    Default = Config.YawManager.Angle,
+    Min = 0,
+    Max = 180,
+    Rounding = 0,
+    Callback = function(val)
+        Config.YawManager.Angle = val
+    end,
+    Tooltip = 'Угол поворота в градусах'
+})
+
+V.UI.Boxes.YawManagerBox:AddToggle('YawManagerAtTarget', {
+    Text = 'AtTarget',
+    Default = Config.YawManager.AtTarget,
+    Callback = function(v)
+        Config.YawManager.AtTarget = v
+    end,
+    Tooltip = 'Поворот относительно цели'
+})
+
+V.UI.Boxes.YawManagerBox:AddToggle('YawManagerDisableAutoRotate', {
+    Text = 'DisableAutoRotate',
+    Default = Config.YawManager.DisableAutoRotate,
+    Callback = function(v)
+        Config.YawManager.DisableAutoRotate = v
+        applyYawManagerAutoRotate()
+    end,
+    Tooltip = 'Отключить автоповорот персонажа'
+})
+
+-- Обработчик респавна персонажа для YawManager
+V.LP.CharacterAdded:Connect(function(char)
+    if Config.YawManager.Enabled or Config.YawManager.DisableAutoRotate then
+        applyYawManagerAutoRotate()
+    end
 end)
 
 -------------------------------------------------
